@@ -4,7 +4,7 @@
 
 ## 작업 모델
 
-`Job`은 `data/jobs/<id>/job.json`에 저장된다. 주요 필드: `status`(`running`/`waiting_for_user`/`failed`/`done`/`idle`, 응답에서 계산), `qVersion`(질문이 새로 만들어질 때마다 +1), `mode`(news|journal), `notes`, `links`, `post`(학습일지 포스트 `{title, markdown, at}`), `hookDesign`(첫 카드 후킹 설계), `activity`(검색어·원문 읽기·결과 수신·후킹 설계 기록 `{t, step, kind: search|fetch|result|hook, detail}`, 최대 400건), `stage`, `busy`(실행 중인 작업 이름 또는 null), `busyLabel`, `error`(`{message, hint, label}`), `retry`(재시도할 작업), `search`(기준 시각·기간), `candidates`(소식·개념 후보: `title`, `summary`, `category`, `date`=게시일, `announcedOn`=실제 발표·변경일 또는 "미확인", `value`=선택할 가치, `uncertainty`=불확실성, `opened`=원문을 실제로 열었는지(엔진의 WebFetch 이벤트로 서버가 확인), `url`), `gaps`(학습일지: 메모의 부족한 점), `selected`, `research`(소식별 `changes`, `conditions{who,since,region,plan,other}`, `discrepancies[]`, `facts[{kind: verified\|claim\|unverified, claim, evidence, url}]`, `caveats`), `exportMeta`(내보낸 PNG별 글자 넘침 측정값), `comparison`, `questions`, `answers`, `storyboard`, `finalApproved`, `log`.
+`Job`은 `data/jobs/<id>/job.json`에 저장된다. 주요 필드: `autoRunning`(호주 데일리 뉴스가 단계들을 이어서 실행 중, 이 동안 `status`는 `running`), `status`(`running`/`waiting_for_user`/`failed`/`done`/`idle`, 응답에서 계산), `qVersion`(질문이 새로 만들어질 때마다 +1), `mode`(news|journal), `notes`, `links`, `post`(학습일지 포스트 `{title, markdown, at}`), `hookDesign`(첫 카드 후킹 설계), `activity`(검색어·원문 읽기·결과 수신·후킹 설계 기록 `{t, step, kind: search|fetch|result|hook, detail}`, 최대 400건), `stage`, `busy`(실행 중인 작업 이름 또는 null), `busyLabel`, `error`(`{message, hint, label}`), `retry`(재시도할 작업), `search`(기준 시각·기간), `candidates`(소식·개념 후보: `title`, `summary`, `category`, `date`=게시일, `announcedOn`=실제 발표·변경일 또는 "미확인", `value`=선택할 가치, `uncertainty`=불확실성, `opened`=원문을 실제로 열었는지(엔진의 WebFetch 이벤트로 서버가 확인), `url`), `gaps`(학습일지: 메모의 부족한 점), `selected`, `research`(소식별 `changes`, `conditions{who,since,region,plan,other}`, `discrepancies[]`, `facts[{kind: verified\|claim\|unverified, claim, evidence, url}]`, `caveats`), `exportMeta`(내보낸 PNG별 글자 넘침 측정값), `comparison`, `questions`, `answers`, `storyboard`, `finalApproved`, `log`.
 
 `stage`: `search → select → research → editorial → storyboard → generate → review → done`.
 사용자 답변을 기다리는 단계(`select`, `editorial`, `storyboard`, `review`)는 정상 상태다. 오래 걸리는 단계는 요청 즉시 `202`와 Job을 돌려주고 백그라운드에서 진행하며, 화면은 `GET /jobs/:id`를 폴링한다(`busy`가 null이 될 때까지).
@@ -16,7 +16,7 @@
 | `GET /health` | - | `{claude: 버전\|null, gemini: {keySet, model}, imageWorker: {selected: agy\|gemini, agy: {installed, allowAllTools}, gemini}}` |
 | `POST /health/test-image` | - | 선택된 이미지 작업자로 1장 생성. `{ok:true, worker, model, width, height, bytes, dataUrl}`(저장된 파일을 검증한 뒤에만 ok) 또는 `{ok:false, message, hint}` (항상 200) |
 | `GET /jobs` | - | `[{id, topic, stage, updatedAt}]` 최신순 |
-| `POST /jobs` | `{topic, brief?, mode?: news|journal, notes?, links?}` | 202 + Job. news는 최근 7일 조사, journal은 메모에서 개념 후보 추출(`notes` 20자 이상 필수, `links`는 http(s)만 최대 10개). `topic` 비면 400 |
+| `POST /jobs` | `{topic, brief?, mode?: news|journal|au, notes?, links?}` | 202 + Job. news는 최근 7일 조사, journal은 메모에서 개념 후보 추출(`notes` 20자 이상 필수, `links`는 http(s)만 최대 10개). `topic` 비면 400. **`mode: "au"`(호주 데일리 뉴스)는 사람의 선택 없이 서버가 검색→선택→검증→스토리보드→단색 배경→검수까지 이어서 실행**하고(`autoRunning: true`) 끝나면 `review`에서 멈춘다. 검색 기간은 시드니 기준 24시간 |
 | `GET /jobs/:id` | - | Job. 없으면 404 |
 | `POST /jobs/:id/widen` | `{days: 14\|30}` | 202. 기간을 넓혀 다시 조사 |
 | `POST /jobs/:id/select` | `{ids: string[1..3]}` | 202. 심층 조사 시작. `stage≠select` 409, 개수 오류 400 |

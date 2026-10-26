@@ -5,7 +5,7 @@ import path from 'node:path';
 import { EngineError, claudeVersion, geminiStatus } from './engines.js';
 import { generateCardImage, inspectImage, workerStatus } from './imageWorker.js';
 import { searchStock } from './stock.js';
-import { LABELS, launch } from './pipeline.js';
+import { LABELS, launch, runAuto } from './pipeline.js';
 import { Job, getJob, jobDir, listJobs, log, newJob, recoverInterrupted, save } from './store.js';
 
 const app = express();
@@ -58,12 +58,12 @@ const need = (req: Request): Job => {
 };
 
 /** 화면과 API가 쓰는 한 줄 상태: 실행 중 / 사용자 답변 대기 / 실패 / 완료 */
-const statusOf = (job: Job) => (job.busy ? 'running' : job.error ? 'failed' : job.stage === 'done' ? 'done'
+const statusOf = (job: Job) => (job.busy || job.autoRunning ? 'running' : job.error ? 'failed' : job.stage === 'done' ? 'done'
   : ['select', 'editorial', 'storyboard', 'review'].includes(job.stage) ? 'waiting_for_user' : 'idle');
 
 /** 작업이 진행 중이면 상태를 바꾸기 전에 거절한다. 진행 중인 작업이 나중에 오래된 상태를 덮어쓰는 것을 막는다. */
 const idle = (job: Job) => {
-  if (job.busy) throw new HttpError(409, '진행 중인 작업이 있습니다. 끝난 뒤 다시 시도하세요.');
+  if (job.busy || job.autoRunning) throw new HttpError(409, '진행 중인 작업이 있습니다. 끝난 뒤 다시 시도하세요.');
 };
 
 const view = (job: Job) => ({ ...job, status: statusOf(job), busyLabel: job.busy ? LABELS[job.busy] ?? job.busy : null });
@@ -92,12 +92,13 @@ app.get('/api/jobs', wrap((_req, res) => res.json(listJobs())));
 app.post('/api/jobs', wrap((req, res) => {
   const topic = String(req.body?.topic ?? '').trim().slice(0, 200);
   if (!topic) throw new HttpError(400, '주제를 입력하세요.');
-  const mode = req.body?.mode === 'journal' ? 'journal' : 'news';
+  const mode = req.body?.mode === 'journal' ? 'journal' : req.body?.mode === 'au' ? 'au' : 'news';
   const notes = String(req.body?.notes ?? '').trim().slice(0, 8000);
   const links = (Array.isArray(req.body?.links) ? req.body.links : []).map(String).map((l: string) => l.trim()).filter((l: string) => /^https?:\/\//.test(l)).slice(0, 10);
   if (mode === 'journal' && notes.length < 20) throw new HttpError(400, '학습 메모를 20자 이상 적어 주세요.');
   const job = newJob(topic, String(req.body?.brief ?? '').trim().slice(0, 600), { mode, notes, links });
-  launch(job, 'search', 7);
+  if (mode === 'au') void runAuto(job);
+  else launch(job, 'search', 7);
   res.status(202).json(view(job));
 }));
 
@@ -135,7 +136,7 @@ app.post('/api/jobs/:id/answers', wrap((req, res) => {
   const a: Record<string, string> = {};
   for (const [k, v] of Object.entries(rawA)) if (/^[a-z][a-z0-9_]{0,31}$/.test(k) && typeof v === 'string') a[k] = v.trim().slice(0, 500);
   for (const q of job.questions) if (!a[q.id]?.trim()) throw new HttpError(400, `"${q.label}"에 답해 주세요.`);
-  const minCards = job.mode === 'journal' ? 3 : 5;
+  const minCards = job.mode === 'journal' ? 3 : job.mode === 'au' ? 4 : 5;
   job.answers = { ...job.answers, ...a, cardCount: String(Math.min(8, Math.max(minCards, Number(a.cardCount) || minCards))) };
   log(job, '편집 방향 확정. 스토리보드를 작성합니다.');
   launch(job, 'storyboard');
@@ -336,14 +337,16 @@ function exportChecks(job: Job): { rows: CheckRow[]; human: string[] } {
   });
   const missing = cards.filter((_, i) => ['missing', 'failed', 'none'].includes(imgRows[i]));
   const ph = cards.filter((_, i) => imgRows[i] === 'placeholder');
-  add('생성 이미지 파일', missing.length ? '실패' : ph.length ? '미확인' : '통과',
+  add('생성 이미지 파일', missing.length ? '실패' : ph.length && job.mode !== 'au' ? '미확인' : '통과',
     missing.length ? `파일이 없거나 열리지 않는 카드: ${missing.map((c) => c.n).join(', ')}`
-      : ph.length ? `${ph.map((c) => c.n).join(', ')}번 카드는 대체 배경이라 실제 이미지 생성은 확인되지 않았습니다`
+      : ph.length ? (job.mode === 'au' ? '단색 배경을 의도적으로 사용합니다(기사 사진의 저작권을 피하려고 사진·생성 이미지를 쓰지 않음)' : `${ph.map((c) => c.n).join(', ')}번 카드는 대체 배경이라 실제 이미지 생성은 확인되지 않았습니다`)
         : `${cards.length}장 모두 저장된 파일이 실제 이미지로 열립니다 (작업자: ${[...new Set(cards.map((c) => c.image?.worker))].join(', ')})`);
-  if (ph.length) human.push('대체 배경 카드가 있습니다. 실제 이미지가 필요하면 이미지 작업자를 연결한 뒤 해당 카드를 다시 만드세요.');
+  if (ph.length && job.mode !== 'au') human.push('대체 배경 카드가 있습니다. 실제 이미지가 필요하면 이미지 작업자를 연결한 뒤 해당 카드를 다시 만드세요.');
 
-  const noSrc = cards.filter((c) => !c.source);
-  add('카드별 출처', noSrc.length ? '미확인' : '통과', noSrc.length ? `출처가 없는 카드: ${noSrc.map((c) => c.n).join(', ')} (메모 기준 내용이면 정상)` : '모든 카드에 출처 링크가 있습니다');
+  // 호주 뉴스 다이제스트는 표지와 정리 카드에 출처가 필요 없고, 뉴스 카드마다 출처가 있어야 한다.
+  const noSrc = cards.filter((c, i) => !c.source && !(job.mode === 'au' && (i === 0 || i === cards.length - 1)));
+  add('카드별 출처', noSrc.length ? '미확인' : '통과', noSrc.length ? `출처가 없는 카드: ${noSrc.map((c) => c.n).join(', ')}${job.mode === 'au' ? '' : ' (메모 기준 내용이면 정상)'}` : job.mode === 'au' ? '뉴스 카드마다 출처 링크가 있습니다(표지·정리 카드는 출처가 필요 없음)' : '모든 카드에 출처 링크가 있습니다');
+  if (job.mode === 'au') human.push('번역이 원문과 맞는지 뉴스 한 건을 골라 원문 링크와 대조하고, 인명·지명 표기를 확인하세요. 이 카드는 번역·요약본이며 기사 전문이 아닙니다.');
   if (job.mode === 'news') human.push('핵심 문장 하나를 골라 날짜·조건을 원문 링크와 직접 대조하세요(앱은 원문을 다시 열어 비교하지 않습니다).');
   add('조사 기준일', job.search?.to ? '통과' : '실패', job.search?.to ? `기준일 ${job.search.to} (표지 카드에 표시됩니다)` : '기준일이 없습니다');
   human.push('표지 PNG에 기준일이 실제로 보이는지 확인하세요(코드로 그리지만 PNG에서 글자를 읽어 확인하지는 않습니다).');
@@ -351,7 +354,7 @@ function exportChecks(job: Job): { rows: CheckRow[]; human: string[] } {
   const generated = cards.filter((c) => c.image?.status === 'ok' && (c.image.category ?? '생성 이미지') === '생성 이미지');
   const stock = cards.filter((c) => c.image?.status === 'ok' && c.image.category === 'CC0·퍼블릭 도메인');
   const stockBad = stock.filter((c) => !c.image?.license || !c.image.creator || !c.image.sourceUrl);
-  add('이미지 표시·출처 기록', stockBad.length ? '실패' : generated.length || stock.length ? '통과' : '미확인',
+  add('이미지 표시·출처 기록', stockBad.length ? '실패' : generated.length || stock.length || job.mode === 'au' ? '통과' : '미확인',
     stockBad.length ? `출처·라이선스 기록이 빠진 CC0 이미지 카드: ${stockBad.map((c) => c.n).join(', ')}`
       : generated.length || stock.length ? [generated.length ? `생성 이미지 ${generated.length}장은 "AI 생성 이미지" 표시와 도구·약관·"실제 제품 화면 아님" 기록` : '', stock.length ? `CC0·퍼블릭 도메인 ${stock.length}장은 작가·라이선스·파일 페이지 주소를 sources.md와 image_usage.json에 기록` : ''].filter(Boolean).join(' / ')
         : '실제 이미지가 없어 해당 없음');

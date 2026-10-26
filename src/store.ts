@@ -6,8 +6,10 @@ export type Stage = 'search' | 'select' | 'research' | 'editorial' | 'storyboard
 
 export interface Candidate {
   id: string;
-  /** 모델·제품·연구·개발 도구·정책·기타 */
+  /** 모델·제품·연구·개발 도구·정책·기타 (호주 뉴스는 정치·경제·사회 등) */
   category?: string;
+  /** 호주 뉴스: 영어 원제 */
+  originalTitle?: string;
   /** 실제 발표·변경일(YYYY-MM-DD). 확인하지 못했으면 '미확인' */
   announcedOn?: string;
   /** 선택할 가치 */
@@ -144,12 +146,14 @@ export interface Job {
   qVersion: number;
   /** 내보낸 PNG별로 브라우저가 알려 준 글자 넘침 여부 */
   exportMeta: Record<string, { overflow: boolean; at: string }>;
-  mode: 'news' | 'journal';
+  mode: 'news' | 'journal' | 'au';
   notes: string;
   links: string[];
   post: { title: string; markdown: string; at: string } | null;
   /** 학습일지: 메모에서 부족하다고 판단된 점(개념 이름·예시·링크 등) */
   gaps: string[];
+  /** 자동 제작(호주 데일리 뉴스)이 단계들을 이어서 실행하는 중인지 */
+  autoRunning: boolean;
   comparison: FormatComparison | null;
   hookDesign: HookDesign | null;
   activity: Activity[];
@@ -166,11 +170,11 @@ const cache = new Map<string, Job>();
 
 export const jobDir = (id: string) => path.join(ROOT, id);
 
-export function newJob(topic: string, brief = '', opts: { mode?: 'news' | 'journal'; notes?: string; links?: string[] } = {}): Job {
+export function newJob(topic: string, brief = '', opts: { mode?: 'news' | 'journal' | 'au'; notes?: string; links?: string[] } = {}): Job {
   const id = new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + crypto.randomBytes(3).toString('hex');
   const now = new Date().toISOString();
   const job: Job = {
-    id, topic, brief, mode: opts.mode ?? 'news', notes: opts.notes ?? '', links: opts.links ?? [], post: null, gaps: [], createdAt: now, updatedAt: now, stage: 'search', busy: null, error: null, retry: null,
+    id, topic, brief, mode: opts.mode ?? 'news', notes: opts.notes ?? '', links: opts.links ?? [], post: null, gaps: [], autoRunning: false, createdAt: now, updatedAt: now, stage: 'search', busy: null, error: null, retry: null,
     search: null, candidates: [], selected: [], research: [], questions: [], qVersion: 0, exportMeta: {}, comparison: null, hookDesign: null, activity: [], answers: {},
     storyboard: null, finalApproved: false, log: [],
   };
@@ -245,6 +249,7 @@ export function getJob(id: string): Job | null {
   job.links ??= [];
   job.post ??= null;
   job.gaps ??= [];
+  job.autoRunning ??= false;
   // 발표·변경일이 확인되지 않은 소식의 카드 출처에 발표일로 저장돼 있던 날짜(이전 방식)를 보도 기준 날짜로 바로잡는다.
   if (job.mode === 'news' && job.storyboard) {
     for (const c of job.storyboard.cards) {
@@ -274,6 +279,11 @@ export function recoverInterrupted() {
   for (const { id } of listJobs()) {
     const job = getJob(id);
     if (!job) continue;
+    if (job.autoRunning) {
+      job.autoRunning = false;
+      if (!job.error) job.error = { message: '서버가 재시작되어 자동 제작이 중단되었습니다.', hint: '화면에서 현재 단계부터 이어서 진행하세요.', label: 'auto' };
+      save(job);
+    }
     if (job.busy) {
       job.error = { message: `서버가 재시작되어 "${job.busy}" 작업이 중단되었습니다.`, hint: '다시 시도를 누르면 이어서 진행합니다.', label: job.busy };
       job.busy = null;

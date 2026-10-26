@@ -114,10 +114,12 @@ function renderCard(canvas, card, total, img, meta = {}) {
     // 학습일지는 모델이 준 원문 게시일을 확인할 수 없으므로 게시일 대신 확인일만 표시한다.
     // 발표·변경일이 확인된 경우만 "발표"로 표시하고, 아니면 게시일을 "보도 기준"으로 밝히며 발표일은 미확인으로 둔다.
     const posted = card.source?.date ? ` · 발표·변경 ${card.source.date}` : card.source?.reportedOn ? ` · 게시 ${card.source.reportedOn} · 발표일 미확인` : '';
-    ctx.fillText(meta.journal ? `확인일 ${meta.asOf}` : `기준일 ${meta.asOf}${posted}`, PAD, CARD_H - 112);
+    ctx.fillText(meta.journal ? `확인일 ${meta.asOf}` : meta.au ? `시드니 기준 ${meta.asOf}` : `기준일 ${meta.asOf}${posted}`, PAD, CARD_H - 112);
   }
   if (card.image?.status === 'ok') {
     ctx.textAlign = 'right'; ctx.fillText(card.image.category === 'CC0·퍼블릭 도메인' ? `이미지: ${card.image.license} · Wikimedia Commons` : 'AI 생성 이미지', CARD_W - PAD, CARD_H - 112); ctx.textAlign = 'left';
+  } else if (meta.au) {
+    ctx.textAlign = 'right'; ctx.fillText('한국어 번역·요약 · 원문은 출처 참조', CARD_W - PAD, CARD_H - 112); ctx.textAlign = 'left';
   }
   const overflow = title.overflow || body.overflow || top < 190;
   return { overflow };

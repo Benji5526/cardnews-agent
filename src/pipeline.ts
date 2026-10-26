@@ -16,14 +16,56 @@ function ask<T>(job: Job, step: string, prompt: string, opts: AskOpts = {}): Pro
 type Task = (job: Job, ...args: any[]) => Promise<void>;
 
 /** 백그라운드 작업 래퍼: 진행 표시, 실패 원인·재시도 정보를 job에 남긴다. */
-export function launch(job: Job, action: string, ...args: unknown[]) {
+// ---------- 호주 데일리 뉴스 전용 보조 ----------
+const SYDNEY = 'Australia/Sydney';
+
+/** 지정한 시간대의 UTC 오프셋 문자열("+11:00")을 돌려준다. 호주는 서머타임이 있어 계절마다 다르다. */
+function tzOffset(tz: string): string {
+  const v = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+10:00';
+  const m = v.match(/GMT([+-]\d{2}):?(\d{2})?/);
+  return m ? `${m[1]}:${m[2] ?? '00'}` : '+10:00';
+}
+
+const AU_NOTE = `
+[호주 뉴스 다이제스트] 독자는 호주 소식이 궁금한 한국 독자입니다. 모든 항목(headline, changes, facts의 claim 등)을 자연스러운 한국어로 번역·요약해 쓰세요. 인명·지명·기관명은 한국어 표기를 쓰고 처음 한 번 영문을 병기하세요. 숫자·날짜·금액(호주 달러는 AUD로 표기)·법안 이름은 원문 그대로 정확히 옮기고, 기사 전문을 옮기지 말고 요약하세요. 시간은 시드니 현지 기준임을 밝히세요.
+`;
+
+const AU_STORYBOARD = `- 이것은 호주 뉴스 다이제스트입니다. 표지 1장(role "표지": 오늘의 호주 큰 뉴스를 한 문장으로 궁금하게 만드는 한국어 후킹, 시드니 기준 오늘임이 드러나게), 선택된 뉴스마다 카드 정확히 1장(role은 뉴스 분야, title 24자 이내 한국어, body 90자 이내: 무슨 일·누가·언제·영향 중 확인된 것만), 마지막 1장(role "정리·출처": 오늘의 한 줄 정리와 출처 매체). 카드 수는 뉴스 수 + 2장입니다.
+- 선택된 뉴스는 하나도 빠뜨리지 말고, 한 뉴스를 두 장으로 쪼개지도 마세요. 표지·후킹·정리 카드가 말하는 뉴스 건수와 주제는 실제 카드와 정확히 같아야 합니다. 어려운 주제(범죄·사고 등)도 확인된 사실만 담담하게 요약하세요.
+- 정리 카드에는 필자의 해석·전망·평가를 쓰지 말고, 확인된 사실의 요약과 출처만 쓰세요. 아직 확정되지 않은 일정·결과(예: 결정 예정일)는 "예정"·"전망"이라고 밝히세요.
+- 날짜는 시드니 기준입니다. "오늘"은 기준일 하루만 가리키며, 그 전날 일은 "어제"나 날짜로 쓰세요.
+- 기사 문장을 그대로 옮기지 말고 요약·번역하세요.
+`;
+
+function auSearchPrompt(job: Job): string {
+  const s = job.search!;
+  return `당신은 호주 뉴스 편집자입니다. 웹 검색(WebSearch)과 원문 읽기(WebFetch)로 호주에서 지난 24시간 동안 가장 큰 뉴스를 찾으세요.
+
+기준 시각: ${s.asOfLabel}
+기간: ${s.from} ~ ${s.to} (시드니 날짜 기준, 이 기간에 보도된 뉴스만)
+독자: 호주 소식이 궁금한 한국 독자
+
+규칙:
+- ABC News(abc.net.au/news), SBS News, The Guardian Australia, The Sydney Morning Herald, The Age, news.com.au, 9News, 7NEWS, The Australian Financial Review 같은 호주 매체를 우선 확인하세요. 여러 매체가 함께 다루는 뉴스일수록 큰 뉴스입니다.
+- "큰 뉴스"의 기준: 전국적 영향, 정부·정치·경제 정책, 재난·안전, 많은 사람에게 영향을 주는 일, 한국과 관련 있는 소식(교민·유학생·교역·여행). 연예·가십·지역 단신은 뒤로 미루세요.
+- 서로 다른 뉴스 6~10건을 중요도가 높은 순서로 정렬해 반환하세요. 같은 사건을 다룬 기사는 하나로 합치세요.
+- 각 후보의 원문(기사 페이지)을 WebFetch로 직접 열어 제목과 날짜를 확인하세요. 열지 못했거나 날짜를 확신할 수 없으면 제외하세요.
+- title: 원문 제목을 한국어로 번역(인명·지명·기관은 한국어 표기, 필요하면 영문 병기). originalTitle: 영어 원제. summary: 한국어 2문장 이내 요약(원문에 있는 내용만, 번역투를 피한 자연스러운 한국어). category: 정치/경제/사회/재난·사건/국제·외교/스포츠/문화·기타 중 하나. date: 원문 게시일(YYYY-MM-DD, 시드니 날짜). announcedOn: 사건이 일어났거나 발표된 날(YYYY-MM-DD), 확인되지 않으면 정확히 "미확인". value: 한국 독자가 알아둘 이유 한 문장. uncertainty: 확인하지 못한 점·주의할 점 한 문장. url: 실제로 연 원문 주소. source: 매체명.
+- 없는 내용을 지어내지 마세요. 기사 전문을 그대로 옮기지 말고 요약하세요.
+
+아래 JSON만 출력하세요(설명 금지):
+{"items":[{"title":"","originalTitle":"","summary":"","category":"","date":"YYYY-MM-DD","announcedOn":"YYYY-MM-DD 또는 미확인","value":"","uncertainty":"","url":"https://...","source":""}]}`;
+}
+
+/** 작업 하나를 실행한다. 이미 진행 중이면 동기적으로 예외를 던진다(라우트가 409로 바꾼다). 끝나면 job.error·job.retry에 결과를 남긴다. */
+function begin(job: Job, action: string, args: unknown[]): Promise<void> {
   if (job.busy) throw new EngineError('이미 진행 중인 작업이 있습니다.');
   const fn = TASKS[action];
   job.busy = action;
   job.error = null;
   job.retry = { action, args };
   save(job);
-  fn(job, ...args)
+  return fn(job, ...args)
     .then(() => {
       job.retry = null;
     })
@@ -36,6 +78,89 @@ export function launch(job: Job, action: string, ...args: unknown[]) {
       job.busy = null;
       save(job);
     });
+}
+
+export function launch(job: Job, action: string, ...args: unknown[]) {
+  void begin(job, action, args);
+}
+
+/**
+ * 호주 데일리 뉴스: 사람의 선택·질문 없이 검색 → 큰 뉴스 선택 → 검증 → 스토리보드 → 단색 배경 → 검수까지 이어서 만든다.
+ * 최종 승인과 수정은 사람이 검수 화면에서 한다. 중간에 실패하면 멈추고, 화면에서 그 단계부터 이어서 진행할 수 있다.
+ */
+export async function runAuto(job: Job): Promise<void> {
+  job.autoRunning = true;
+  save(job);
+  const step = async (action: string, ...args: unknown[]) => {
+    await begin(job, action, args);
+    if (job.error) throw new EngineError(job.error.message, job.error.hint);
+  };
+  try {
+    log(job, '호주 데일리 뉴스 자동 제작을 시작합니다. 완료되면 검수 화면에서 확인·승인하세요.');
+    await step('search', 1);
+
+    // 중요도 순으로 정렬돼 온 후보 중 원문을 실제로 연 것을 우선해 3~4건을 고른다.
+    const ranked = [...job.candidates.filter((c) => c.opened), ...job.candidates.filter((c) => !c.opened)];
+    const pick = ranked.slice(0, 4);
+    if (pick.length < 2) {
+      throw new EngineError(`호주의 큰 뉴스를 충분히 확인하지 못했습니다 (${pick.length}건).`, '잠시 뒤 다시 실행하거나, 화면에서 직접 후보를 고르세요.');
+    }
+    job.selected = pick.map((c) => c.id);
+    job.answers = {};
+    job.hookDesign = null;
+    log(job, `자동 선택: ${pick.map((c) => c.title).join(' / ')}`);
+    save(job);
+    await step('research');
+
+    // 질문은 추천 답으로 채운다. 독자와 형식은 이 모드의 고정값을 쓴다.
+    const ans: Record<string, string> = {};
+    for (const q of job.questions) ans[q.id] = q.recommended;
+    ans.audience = '호주 소식이 궁금한 한국 독자';
+    ans.format = '뉴스 다이제스트형(뉴스별 카드 한 장)';
+    ans.cardCount = String(pick.length + 2);
+    job.answers = { ...job.answers, ...ans };
+    save(job);
+    await step('storyboard');
+
+    // 선택한 뉴스마다 카드가 있는지 코드로 확인한다(근거 주소가 그 뉴스의 것인 카드가 있어야 한다). 빠졌으면 한 번 다시 쓴다.
+    const missingItems = () => {
+      const cards = job.storyboard!.cards;
+      return pick.filter((p) => {
+        const urls = new Set([p.url, ...(job.research.find((r) => r.id === p.id)?.facts.map((f) => f.url) ?? [])].filter(Boolean));
+        return !cards.some((c) => c.source && urls.has(c.source.url));
+      });
+    };
+    let missing = missingItems();
+    if (missing.length) {
+      log(job, `카드에 빠진 뉴스가 있어 다시 씁니다: ${missing.map((m) => m.title).join(' / ')}`);
+      await step('storyboard', `다음 뉴스가 카드에 빠져 있습니다: ${missing.map((m) => m.title).join(' / ')}. 선택된 뉴스는 모두 각각 카드 한 장으로 다루고(뉴스 수 + 2장), 한 뉴스를 두 장으로 쪼개지 마세요. 표지·후킹·정리 카드가 말하는 뉴스 건수는 실제 카드와 같아야 합니다.`);
+      missing = missingItems();
+      if (missing.length) log(job, `다시 써도 카드에 없는 뉴스: ${missing.map((m) => m.title).join(' / ')}. 검수 화면에서 확인하세요.`);
+    }
+
+    // 기사 사진은 저작권 때문에 쓰지 않고, 이미지 생성도 하지 않는다. 단색 배경으로 진행한다.
+    for (const c of job.storyboard!.cards) {
+      c.image = { status: 'placeholder', prompt: c.imagePrompt, category: '대체 배경(이미지 아님)', note: '호주 뉴스 모드는 기사 사진의 저작권을 피하려고 단색 배경을 씁니다.' };
+    }
+    job.stage = 'generate';
+    save(job);
+    await step('review');
+
+    // 검수가 지적한 카드는 사람이 보기 전에 한 번만 자동으로 고친다(최대 3장, 1회). 고친 뒤에는 검수가 다시 실행된다.
+    const flagged = job.storyboard!.cards.filter((c) => c.qa && !c.qa.ok).slice(0, 3);
+    for (const c of flagged) {
+      log(job, `검수 지적을 반영해 카드 ${c.n}을 자동으로 고칩니다.`);
+      await step('reviseCard', c.n, `검수 지적을 반영해 고쳐 줘: ${c.qa!.issue} 확인된 사실만 쓰고 필자의 해석은 빼. 아직 확정되지 않은 일은 "예정"·"전망"이라고 밝혀. 날짜는 시드니 기준으로 정확히 써.`, 'text');
+    }
+    const left = job.storyboard!.cards.filter((c) => c.qa && !c.qa.ok).length;
+    log(job, left ? `자동 제작이 끝났습니다. 검수가 아직 지적하는 카드가 ${left}장 있으니 확인한 뒤 승인하세요.` : '자동 제작이 끝났습니다. 번역과 사실을 확인한 뒤 최종 승인하세요.');
+  } catch (e) {
+    log(job, `자동 제작이 멈췄습니다: ${(e as Error).message} 화면에서 현재 단계부터 이어서 진행할 수 있습니다.`);
+    if (!job.error) job.error = { message: (e as Error).message, hint: (e as EngineError).hint || '화면에서 이어서 진행하세요.', label: 'auto' };
+  } finally {
+    job.autoRunning = false;
+    save(job);
+  }
 }
 
 export const LABELS: Record<string, string> = {
@@ -86,14 +211,21 @@ const search: Task = async (job, days: number) => {
   if (job.mode === 'journal') return journalConcepts(job);
   const asOf = new Date();
   const from = new Date(asOf.getTime() - days * 86400_000);
-  job.search = {
-    asOf: asOf.toISOString(), asOfLabel: KST(asOf) + ' (KST)', days,
-    from: ymd(from), to: ymd(asOf), shortage: false, dropped: 0,
-  };
+  const sydneyDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: SYDNEY }).format(d);
+  job.search = job.mode === 'au'
+    ? {
+      asOf: asOf.toISOString(),
+      asOfLabel: `${new Intl.DateTimeFormat('ko-KR', { timeZone: SYDNEY, dateStyle: 'medium', timeStyle: 'short', hour12: false }).format(asOf)} (시드니) · ${KST(asOf)} (KST)`,
+      days, from: sydneyDate(from), to: sydneyDate(asOf), shortage: false, dropped: 0,
+    }
+    : {
+      asOf: asOf.toISOString(), asOfLabel: KST(asOf) + ' (KST)', days,
+      from: ymd(from), to: ymd(asOf), shortage: false, dropped: 0,
+    };
   job.stage = 'search';
   log(job, `"${job.topic}" 조사 시작: ${job.search.from} ~ ${job.search.to} (최근 ${days}일)`);
 
-  const prompt = `당신은 뉴스 리서처입니다. 웹 검색(WebSearch)과 원문 읽기(WebFetch)로 아래 주제의 소식을 조사하세요.
+  const prompt = job.mode === 'au' ? auSearchPrompt(job) : `당신은 뉴스 리서처입니다. 웹 검색(WebSearch)과 원문 읽기(WebFetch)로 아래 주제의 소식을 조사하세요.
 
 주제: ${job.topic}
 기준 시각: ${job.search.asOfLabel}
@@ -114,20 +246,21 @@ const search: Task = async (job, days: number) => {
   // 후보 원문을 실제로 열어 읽었는지는 모델의 말이 아니라 엔진 이벤트(WebFetch 호출)로 서버가 확인한다.
   const normUrl = (u: string) => u.replace(/#.*$/, '').replace(/\/$/, '');
   const fetched = new Set(job.activity.slice(activityStart).filter((x) => x.kind === 'fetch').map((x) => normUrl(x.detail)));
-  const fromT = new Date(job.search.from + 'T00:00:00+09:00').getTime();
-  const toT = new Date(job.search.to + 'T23:59:59+09:00').getTime();
+  const OFF = job.mode === 'au' ? tzOffset(SYDNEY) : '+09:00';
+  const fromT = new Date(job.search.from + 'T00:00:00' + OFF).getTime();
+  const toT = new Date(job.search.to + 'T23:59:59' + OFF).getTime();
   const ISO = /^\d{4}-\d{2}-\d{2}$/;
   const seen = new Set<string>();
   const items = (res.items ?? []).filter((it) => {
     if (!it?.title || !/^https?:\/\//.test(it.url ?? '') || seen.has(it.url)) return false;
     seen.add(it.url);
-    const t = new Date(it.date + 'T12:00:00+09:00').getTime();
+    const t = new Date(it.date + 'T12:00:00' + OFF).getTime();
     if (Number.isNaN(t) || t < fromT || t > toT) {
       job.search!.dropped++;
       return false;
     }
     // 실제 발표·변경일이 확인되는데 조사 기간보다 이전이면 오래된 발표를 새 소식으로 올리지 않는다.
-    if (ISO.test(it.announcedOn ?? '') && new Date(it.announcedOn + 'T12:00:00+09:00').getTime() < fromT) {
+    if (ISO.test(it.announcedOn ?? '') && new Date(it.announcedOn + 'T12:00:00' + OFF).getTime() < fromT) {
       job.search!.dropped++;
       log(job, `제외: "${it.title}" — 실제 발표일(${it.announcedOn})이 조사 기간보다 이전입니다.`);
       return false;
@@ -138,7 +271,7 @@ const search: Task = async (job, days: number) => {
     ...it, id: `c${i + 1}`, announcedOn: ISO.test(it.announcedOn ?? '') ? it.announcedOn : '미확인',
     opened: fetched.has(normUrl(it.url)),
   }));
-  job.search.shortage = job.candidates.length < 7;
+  job.search.shortage = job.candidates.length < (job.mode === 'au' ? 3 : 7);
   job.selected = [];
   job.stage = 'select';
   const unopened = job.candidates.filter((c) => !c.opened).length;
@@ -176,7 +309,7 @@ const research: Task = async (job) => {
   job.stage = 'research';
   const picked = job.candidates.filter((c) => job.selected.includes(c.id));
   log(job, `선택한 ${picked.length}건의 원문과 근거를 확인합니다.`);
-  const prompt = job.mode === 'journal' ? journalResearchPrompt(job, picked) : `당신은 카드뉴스 편집자이자 팩트체커입니다. 아래 선택된 소식들의 원문을 WebFetch로 직접 읽고 근거를 확인하세요. 필요하면 WebSearch로 교차 확인하세요.
+  const prompt = job.mode === 'journal' ? journalResearchPrompt(job, picked) : `당신은 카드뉴스 편집자이자 팩트체커입니다. 아래 선택된 소식들의 원문을 WebFetch로 직접 읽고 근거를 확인하세요. 필요하면 WebSearch로 교차 확인하세요.${job.mode === 'au' ? AU_NOTE : ''}
 
 주제: ${job.topic}
 기준일: ${job.search?.to} (조사 기간 ${job.search?.from} ~ ${job.search?.to})
@@ -305,7 +438,9 @@ ${JSON.stringify(job.research)}
 const storyboard: Task = async (job, feedback?: string) => {
   if (!job.hookDesign) await designHook(job);
   const prev = job.storyboard;
-  const count = Math.min(8, Math.max(job.mode === 'journal' ? 3 : 5, Number(job.answers.cardCount) || (job.mode === 'journal' ? 4 : 5)));
+  const minC = job.mode === 'journal' ? 3 : job.mode === 'au' ? 4 : 5;
+  const defC = job.mode === 'journal' ? 4 : job.mode === 'au' ? job.selected.length + 2 : 5;
+  const count = Math.min(8, Math.max(minC, Number(job.answers.cardCount) || defC));
   const prompt = `당신은 한국어 카드뉴스 스토리보드 작가입니다. 아래 확인된 사실만 사용해 ${prev ? '스토리보드를 수정' : '스토리보드를 작성'}하세요. 웹 검색은 쓰지 마세요.
 
 주제: ${job.topic}
@@ -323,7 +458,7 @@ ${JSON.stringify(job.research)}
 ${prev ? `\n현재 스토리보드:\n${JSON.stringify(prev.cards)}\n사용자 수정 요청: ${feedback}\n요청과 무관한 카드는 그대로 두세요.\n` : ''}
 규칙:
 - 첫 카드는 표지(role "표지"), 마지막은 정리/출처 카드. 각 카드는 role(역할), title(24자 이내), body(핵심 문장 한두 문장, 90자 이내), source({title,url}, 위 사실의 url 중에서만; 근거가 없으면 null), visual(그림 계획, 한국어 한 문장), imagePrompt(이미지 생성용 영어 프롬프트, 글자·로고·워터마크 금지, 텍스트 영역을 위해 하단은 비교적 단순하게).
-${job.mode === 'journal' ? '- 이것은 블로그 학습일지의 요약 카드입니다. 내 학습 메모와 확인된 사실만 사용하고, 마지막 카드는 "오늘의 한 줄 정리"로 마무리하세요. 메모와 원문이 달랐던 점은 "바로잡은 점" 카드에 담을 수 있습니다.\n내 학습 메모:\n' + job.notes + '\n' : ''}- 표지(hook)에는 확인된 사실만 쓰고, 확인하지 못한 기능·효과를 넣지 마세요. '최신'이라는 표현은 기준일과 원문 게시일이 뒷받침할 때만 쓰세요.
+${job.mode === 'au' ? AU_STORYBOARD : ''}${job.mode === 'journal' ? '- 이것은 블로그 학습일지의 요약 카드입니다. 내 학습 메모와 확인된 사실만 사용하고, 마지막 카드는 "오늘의 한 줄 정리"로 마무리하세요. 메모와 원문이 달랐던 점은 "바로잡은 점" 카드에 담을 수 있습니다.\n내 학습 메모:\n' + job.notes + '\n' : ''}- 표지(hook)에는 확인된 사실만 쓰고, 확인하지 못한 기능·효과를 넣지 마세요. '최신'이라는 표현은 기준일과 원문 게시일이 뒷받침할 때만 쓰세요.
 - title은 role(카드 위 칩에 따로 표시됨)과 같은 말로 시작하지 마세요. 예: role이 "바로잡은 점"이면 title은 "쉼표는 에러"처럼 내용만 쓰세요.
 - 확인된 사실(kind verified)만 사실로 쓰세요. 발표 주체의 주장(kind claim)은 "○○에 따르면"·"○○는 …라고 밝혔다"처럼 주체를 밝혀 쓰고, 확인하지 못한 내용(kind unverified)은 쓰지 마세요. 공개 예정·단계적 제공 기능이면 제목이나 본문에 "예정"을 남기고, 사용 조건(대상·지역·요금제)은 한 카드에 모아 담으세요.
 - 사실에 없는 수치·주장은 쓰지 마세요. 카드에 들어가는 글은 읽기 쉬운 한국어로.

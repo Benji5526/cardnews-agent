@@ -90,6 +90,11 @@ function statusPill() {
   return job?.status ? `<div class="muted" style="margin-bottom:8px">상태: <b>${STATUS_LABEL[job.status] ?? job.status}</b> <code>${job.status}</code></div>` : '';
 }
 
+function autoPanel() {
+  if (!job?.autoRunning) return '';
+  return `<div class="panel busy"><div class="spin"></div><div><b>호주 뉴스 자동 제작 중…</b><div class="muted">현재 단계: ${esc(STEPS[STAGE_STEP[job.stage]] ?? job.stage)}. 끝나면 검수 화면에서 번역과 사실을 확인하고 승인하세요. 새로고침해도 이어집니다.</div></div></div>`;
+}
+
 function busyPanel() {
   if (!job.busy) return '';
   return `<div class="panel busy"><div class="spin"></div><div><b>${esc(job.busyLabel)} 진행 중…</b><div class="muted">검색·생성에는 수 분이 걸릴 수 있습니다. 새로고침해도 진행 상태는 유지됩니다.</div></div></div>`;
@@ -101,15 +106,17 @@ function errorPanel() {
 }
 
 // ---------- 단계별 화면 ----------
-const DEFAULT_TOPIC = { news: 'AI 최신소식', journal: '오늘 공부한 것: ' };
+const DEFAULT_TOPIC = { news: 'AI 최신소식', journal: '오늘 공부한 것: ', au: '오늘의 호주 뉴스' };
 
 function viewTopic() {
   return `<div class="panel"><h2>1. 주제 입력</h2>
     <div class="q"><b>무엇을 만들까요?</b>
       <label class="opt"><input type="radio" name="mode" value="news" checked><span>최신 소식 카드뉴스 <span class="muted">— 최근 7일 자료를 조사해 카드뉴스를 만듭니다.</span></span></label>
-      <label class="opt"><input type="radio" name="mode" value="journal"><span>학습일지 → 블로그 포스트 + 요약 카드 <span class="muted">— 오늘 공부한 메모에서 개념을 골라 글과 카드를 만듭니다.</span></span></label></div>
+      <label class="opt"><input type="radio" name="mode" value="journal"><span>학습일지 → 블로그 포스트 + 요약 카드 <span class="muted">— 오늘 공부한 메모에서 개념을 골라 글과 카드를 만듭니다.</span></span></label>
+      <label class="opt"><input type="radio" name="mode" value="au"><span>호주 데일리 뉴스 (한국어 번역·요약) <span class="muted">— 오늘 호주의 큰 뉴스를 자동으로 찾아 카드로 만들어 두고, 마지막에 내가 승인합니다.</span></span></label></div>
     <input type="text" id="topic" value="${DEFAULT_TOPIC.news}" placeholder="주제">
     <div data-mode-block="news"><p class="muted">주제를 입력하면 실행 시점 기준 최근 7일의 자료를 조사합니다.</p></div>
+    <div data-mode-block="au" hidden><p class="muted">시드니 기준 최근 24시간의 호주 큰 뉴스 3~4건을 찾아 한국어로 요약 번역해 한 편(5~6장)으로 만듭니다. 선택·질문 없이 자동으로 진행되고, 끝나면 검수 화면에서 확인·승인합니다. 기사 사진은 쓰지 않고 단색 배경을 씁니다.</p></div>
     <div data-mode-block="journal" hidden>
       <div class="q" style="margin-top:12px"><b>학습 메모</b><div class="why">오늘 배운 내용을 자유롭게 적어 주세요 (20자 이상). 원문과 대조해 오해한 부분을 짚어 드립니다.</div>
       <textarea id="notes" style="min-height:140px" placeholder="예: RAG는 검색으로 가져온 문서를 프롬프트에 넣어 답하게 하는 방식. 임베딩은 문장을 벡터로 바꾸는 것..."></textarea></div>
@@ -258,7 +265,7 @@ async function paintCards() {
     const canvas = document.querySelector(`canvas[data-n="${c.n}"]`);
     if (!canvas) continue;
     const img = await loadImage(c.image?.file ? `/api/jobs/${job.id}/images/${c.image.file}` : null);
-    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal' });
+    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal', au: job.mode === 'au' });
     const badge = document.querySelector(`[data-ovf="${c.n}"]`);
     if (badge) { badge.className = 'badge ' + (overflow ? 'bad' : 'ok'); badge.textContent = overflow ? '글자 넘침' : '글자 OK'; }
   }
@@ -278,10 +285,11 @@ function render() {
     case 'storyboard': body = viewStoryboard(); break;
     default: body = job.storyboard ? viewCards() : '';
   }
-  v.innerHTML = note + statusPill() + busyPanel() + errorPanel() + activityPanel() + body;
+  if (job.autoRunning) body = '';
+  v.innerHTML = note + statusPill() + autoPanel() + busyPanel() + errorPanel() + activityPanel() + body;
   if (job.stage === 'editorial' && !job.busy) restoreEditorialForm();
   if (job.storyboard && ['generate', 'review', 'done'].includes(job.stage)) paintCards();
-  if (job.busy) startPolling();
+  if (job.busy || job.autoRunning) startPolling();
 }
 
 function startPolling() {
@@ -292,7 +300,7 @@ function startPolling() {
       const changed = next.updatedAt !== job.updatedAt;
       job = next;
       if (changed) render();
-      if (!job.busy) { clearInterval(pollTimer); pollTimer = null; render(); loadJobs(); }
+      if (!job.busy && !job.autoRunning) { clearInterval(pollTimer); pollTimer = null; render(); loadJobs(); }
     } catch { /* 서버 재시작 중일 수 있음: 다음 주기에 다시 시도 */ }
   }, 1500);
 }
@@ -325,7 +333,7 @@ async function downloadAll() {
     state.textContent = `PNG 만드는 중 ${c.n}/${total}…`;
     const canvas = document.createElement('canvas');
     const img = await loadImage(c.image?.file ? `/api/jobs/${job.id}/images/${c.image.file}` : null);
-    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal' });
+    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal', au: job.mode === 'au' });
     await api(`/jobs/${job.id}/png`, 'POST', { n: c.n, dataUrl: canvas.toDataURL('image/png'), overflow });
   }
   state.textContent = '내보낸 파일을 점검하는 중…';
