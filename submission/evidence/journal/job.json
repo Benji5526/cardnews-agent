@@ -1,0 +1,662 @@
+{
+  "id": "20261023-2bab05",
+  "topic": "오늘 공부한 것: 뭔가",
+  "brief": "",
+  "mode": "journal",
+  "notes": "오늘 카드뉴스 앱에 이미지 작업자를 붙이면서 배운 것.\n1) agy -p 는 헤드리스라 도구 권한을 대화형으로 받을 수 없다. 그래서 이미지를 요청해도 응답에는 '생성했다'고 나오는데 파일이 안 생길 수 있었다. --dangerously-skip-permissions 를 주면 파일이 생겼다. 그래서 성공은 응답 문장이 아니라 저장된 파일이 실제 이미지로 열리는지로 판단한다.\n2) Gemini API가 HTTP 429를 돌려주면 API 키 인증이 틀렸다는 뜻이라고 생각해서 키부터 다시 만들었다.\n3) 키 오류와 한도 오류는 같은 재시도로 풀리지 않아서, 첫 실패에서 남은 카드를 건너뛰고 멈추게 했다.",
+  "links": [
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429",
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401"
+  ],
+  "post": {
+    "title": "429는 키 오류가 아니다",
+    "markdown": "---\ntitle: \"429는 키 오류가 아니다\"\ndate: 2026-10-23\ncategories: [학습일지]\ntags: [HTTP, 429, Gemini API, 레이트리밋, agy, 헤드리스, 카드뉴스]\n---\n\n카드뉴스 앱에 이미지 작업자를 붙이면서 배운 것을 정리한다. 핵심은 두 가지다. 429는 인증 문제가 아니라 한도 문제라는 것, 그리고 성공은 응답 문장이 아니라 저장된 파일로 판단한다는 것이다.\n\n## 오늘 배운 것\n\n학습 메모 항목은 총 3개다.\n\n1. `agy -p`는 헤드리스라 도구 권한을 대화형으로 받을 수 없어서, 응답에는 \"생성했다\"고 나와도 파일이 안 생길 수 있었다. `--dangerously-skip-permissions`를 주면 파일이 생겼고, 그래서 성공은 저장된 파일이 실제 이미지로 열리는지로 판단한다.\n2. Gemini API가 HTTP 429를 돌려주면 키 인증이 틀렸다는 뜻이라고 생각해서 키부터 다시 만들었다. (이 이해는 틀렸다. 아래 \"내 메모에서 바로잡은 점\" 참고)\n3. 키 오류와 한도 오류는 같은 재시도로 풀리지 않아서, 첫 실패에서 남은 카드를 건너뛰고 멈추게 했다.\n\n## 핵심 개념\n\n### 429는 속도·한도 문제다\n\n- 429 Too Many Requests는 클라이언트가 일정 시간 안에 너무 많은 요청을 보냈다는 4xx 응답이다. 요청 속도를 늦추라는 신호이며, 명세는 RFC 6585 section 4다.\n- 429 응답에는 `Retry-After` 헤더가 포함될 수 있다. 값은 초 단위 숫자이거나 HTTP 날짜 형식이다. 예: `Retry-After: 3600`(60분 후 재시도). 헤더가 없으면 지수 백오프 등으로 간격을 늘리라고 안내한다.\n- Gemini API 공식 가이드는 429 `RESOURCE_EXHAUSTED`를 일시적이라 재시도할 수 있는 오류로 분류한다. 해결책은 지수 백오프(약 1초에서 시작해 2초, 4초, 8초), 지터, 최대 재시도 횟수 제한이다.\n- 잘못되었거나 권한 없는 API 키 문제는 429가 아니라 403이다. 400, 402, 403은 재시도해도 해결되지 않는 오류로 분류된다.\n\n### Gemini API 한도의 단위\n\n- 한도는 RPM(분당 요청), TPM(분당 입력 토큰), RPD(일일 요청)로 평가된다. 하나라도 넘으면 다른 한도에 여유가 있어도 오류가 난다. 모델에 따라 이미지 생성용 IPM이나 일일 토큰 한도(TPD)가 추가될 수 있다.\n- 한도는 API 키 단위가 아니라 프로젝트 단위다. 문서 원문은 \"Rate limits are applied per project, not per API key.\"이다. 그래서 같은 프로젝트에서 키를 새로 만들어도 한도는 풀리지 않는다. RPD는 태평양 시간 자정에 초기화된다.\n- 유료 티어에는 10분 롤링 윈도우의 지출 기반 한도(Tier 1 $10, Tier 2 $50, Tier 3 $200)가 있고, 넘으면 429 `RESOURCE_EXHAUSTED`가 반환된다. 무료 티어에는 적용되지 않는다.\n\n### 헤드리스 `agy -p`와 권한\n\n- 서드파티 가이드(Hexdocs, v0.1.0, 비공식으로 보임)에는 `agy -p \"...\" --dangerously-skip-permissions` 예시가 있다. 대화형 확인이 불가능한 환경에서는 파일·명령 동작이 사용자 승인을 기다릴 수 있다고 설명하고, 통제된 환경에서 이 플래그를 쓰라고 권한다. 다만 검색 결과 요약으로만 확인했고 페이지를 직접 열어 보지는 않았다.\n- 이 플래그는 이름 그대로 위험하다. 모든 권한 확인을 건너뛰므로 작업 폴더가 격리된 통제 환경에서만 쓰는 편이 안전하다. (이 위험성 자체는 공식 문서로 확인하지 못했다.)\n- 별개의 문제로, `agy -p`는 stdout이 실제 터미널이 아니면 출력이 비거나 멈출 수 있다. `agy-headless-bridge` 패키지는 pty(의사 터미널)로 감싸 실행해 이 문제를 우회한다. GitHub 이슈도 서브프로세스, 파이프, 백그라운드 작업 같은 비-TTY 환경에서 print 모드가 무한정 멈춘다고 보고한다. 권한 문제와 원인이 다를 수 있으니 구분해서 봐야 한다.\n- 헤드리스나 CI 환경에서는 서드파티 치트시트가 소개하는 방법으로, settings.json에서 provider를 gemini로 지정하고 `GEMINI_API_KEY`를 환경 변수로 export할 수 있다.\n- agy(Antigravity CLI) 저장소는 2026-05-13에 공개됐고, 개인 계정에서는 2026년 6월에 호스팅형 Gemini CLI를 대체했다고 한다. 이 시점은 서드파티 출처 기준이며 공식 문서로 교차 확인하지 못했다.\n\n## 예시\n\n성공 여부를 응답 문장이 아니라 저장된 파일로 판단하는 흐름이다. 아래는 내 설계 판단을 옮긴 의사 코드이며, 공식 문서에서 가져온 코드가 아니다.\n\n```text\nfor card in cards:\n    run agy -p \"<이미지 요청>\" --dangerously-skip-permissions   # 격리된 작업 폴더에서만\n    if 저장된 파일이 실제 이미지로 열리지 않음:\n        실패로 기록하고 남은 카드는 건너뛴 채 중단\n```\n\n- 응답에 \"생성했다\"고 적혀 있어도 파일을 열어 보기 전에는 성공이 아니다.\n- 첫 실패에서 멈추는 것은 키 오류나 일일 한도 소진처럼 재시도로 풀리지 않는 경우를 위한 선택이다. 공식 가이드는 429를 일시적이라 백오프 재시도 대상으로 보므로, 429에서 바로 멈추는 것은 공식 권장과 다르다. 일시적 한도라면 `Retry-After`나 지수 백오프로 재시도하는 편이 권장 방식이다.\n\n## 내 메모에서 바로잡은 점\n\n- **\"429면 API 키 인증 오류\"는 틀렸다.** MDN과 Gemini 공식 문서 모두 429를 속도·한도 문제로 보고, 키 문제는 403으로 구분한다. 키를 새로 만든 것은 불필요했을 가능성이 크다.\n- 한도가 프로젝트 단위이므로, 같은 프로젝트에서 새 키를 만들어도 효과가 없었을 것이다.\n- 내가 실제로 받은 429의 구체적 원인(분당 한도, 일일 할당량, 이미지 생성 한도, 지출 한도)은 확인하지 못했다. 오류 본문의 reason 필드를 봐야 알 수 있다. 사용량이 낮은데도 429가 난다는 포럼 보고가 있지만 원인이 확정된 것은 아니라 단정하지 않는다.\n- \"응답에는 생성했다고 나오는데 파일이 안 생겼다\"는 현상이 권한 대기 때문이라는 설명은 서드파티 가이드와 맞지만 공식 확인은 아니다.\n- \"저장된 파일이 실제 이미지로 열리는지 검증한다\"는 원칙은 원문이 뒷받침하는 내용이 아니라 내 설계 판단이다.\n\n## 참고 링크\n\n- [MDN: 429 Too Many Requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429)\n- [MDN: 401 Unauthorized](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401)\n- [Hexdocs: agy 가이드](https://hexdocs.pm/agy/agy.epub)\n- [agy-headless-bridge (Socket)](https://socket.dev/pypi/package/agy-headless-bridge)\n- [Antigravity CLI 치트시트 (ComputingForGeeks)](https://computingforgeeks.com/antigravity-cli-cheat-sheet/)\n- [Gemini API 트러블슈팅](https://ai.google.dev/gemini-api/docs/troubleshooting)\n- [Gemini API 레이트 리밋](https://ai.google.dev/gemini-api/docs/rate-limits)",
+    "at": "2026-10-23T09:13:38.379Z"
+  },
+  "gaps": [
+    "agy가 무엇인지(도구 이름·버전)와 -p 옵션의 공식 문서 링크가 없어 헤드리스 권한 동작을 원문으로 확인하지 못했다.",
+    "Gemini API 429의 실제 오류 메시지나 응답 본문, 한도 종류가 없어 어떤 한도에 걸렸는지 알 수 없다.",
+    "실제 이미지 파일 검증 방법(어떤 검사로 이미지가 열리는지 확인했는지)에 대한 설명이나 코드 예시가 없다.",
+    "중단 로직의 구체적 구현(어떤 상태 코드에서 멈추는지, 이미 만든 카드 처리)에 대한 예시가 없다.",
+    "오늘 주제가 '뭔가'로 모호하며, 메모 3개가 서로 다른 층위(권한, 오류 해석, 실패 처리)라 글의 범위를 정해야 한다."
+  ],
+  "createdAt": "2026-10-23T09:08:24.300Z",
+  "updatedAt": "2026-10-23T10:08:05.917Z",
+  "stage": "done",
+  "busy": null,
+  "error": null,
+  "retry": null,
+  "search": {
+    "asOf": "2026-10-23T09:09:05.630Z",
+    "asOfLabel": "2026. 10. 23. 18시 9분 5초 (KST)",
+    "days": 0,
+    "from": "2026-10-23",
+    "to": "2026-10-23",
+    "shortage": false,
+    "dropped": 0
+  },
+  "candidates": [
+    {
+      "id": "c1",
+      "title": "헤드리스 모드(agy -p)의 도구 권한: 응답 문장이 아니라 결과 파일로 성공을 판단한다",
+      "summary": "agy -p는 헤드리스라 도구 권한을 대화형으로 받을 수 없어서, 응답에는 '생성했다'고 나와도 파일이 안 생길 수 있었다. --dangerously-skip-permissions를 주면 파일이 생겼고, 그래서 저장된 파일이 실제 이미지로 열리는지로 성공을 판단하기로 했다. ⚠ 확인 필요: agy 옵션과 권한 동작은 메모 기준이며 공식 문서로 확인하지 못했다. 이 플래그는 모든 권한 확인을 건너뛰므로 위험도 함께 확인해야 한다.",
+      "date": "2026-10-23",
+      "url": "memo:c1",
+      "source": "내 메모"
+    },
+    {
+      "id": "c2",
+      "title": "HTTP 429 Too Many Requests: 인증 오류가 아니라 요청 속도·한도 문제",
+      "summary": "메모에서는 Gemini API의 429를 API 키 인증 오류로 오해해 키부터 다시 만들었다. MDN은 429를 클라이언트가 일정 시간 안에 너무 많은 요청을 보냈다는 뜻(레이트 리미팅)으로 설명하고, Retry-After 헤더로 대기 시간을 알려줄 수 있다고 한다. ⚠ 확인 필요: Gemini API가 반환한 429의 구체적 원인(분당 요청 한도, 일일 할당량 등)은 메모와 MDN에서 확인되지 않았다. Gemini 공식 문서와 실제 오류 본문을 봐야 한다.",
+      "date": "2026-06-22",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429",
+      "source": "MDN Web Docs"
+    },
+    {
+      "id": "c3",
+      "title": "HTTP 401 Unauthorized: 인증 자격 증명 문제와 429의 구분",
+      "summary": "401은 요청에 유효한 인증 자격 증명이 없다는 뜻이고, 서버는 WWW-Authenticate 헤더로 기대하는 인증 방식을 알려준다. 그래서 키가 틀렸다면 429가 아니라 401 계열 응답을 기대하는 것이 맞고, 상태 코드로 원인을 구분해 대응해야 한다. ⚠ 확인 필요: Gemini API가 잘못된 키에 실제로 어떤 상태 코드를 반환하는지는 확인하지 못했다. 메모에도 없고 MDN은 일반 HTTP 의미만 다룬다. 날짜는 MDN 최종 수정일이다.",
+      "date": "2026-06-22",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401",
+      "source": "MDN Web Docs"
+    },
+    {
+      "id": "c4",
+      "title": "오류 유형별 재시도 전략: 같은 재시도로 풀리지 않으면 첫 실패에서 멈춘다",
+      "summary": "키 오류와 한도 오류는 같은 재시도로 해결되지 않아서, 첫 실패가 나면 남은 카드를 건너뛰고 멈추게 했다. 재시도로 풀리는 오류와 아닌 오류를 나누는 기준이 핵심이다. ⚠ 확인 필요: 한도 오류(429)는 Retry-After 등을 따라 대기 후 재시도할 여지가 있어, 즉시 중단이 최선인지는 메모만으로 판단할 수 없다.",
+      "date": "2026-06-22",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429",
+      "source": "MDN Web Docs"
+    }
+  ],
+  "selected": [
+    "c1",
+    "c2"
+  ],
+  "research": [
+    {
+      "id": "c1",
+      "headline": "헤드리스 agy -p: 응답 문장이 아니라 저장된 파일로 성공을 판단한다",
+      "facts": [
+        {
+          "claim": "agy -p에 --dangerously-skip-permissions를 붙이는 예시는 서드파티 가이드(Hexdocs)에 있다. 대화형 확인이 불가능한 환경에서는 파일·명령 동작이 사용자 승인을 기다릴 수 있다고 설명하고, 통제된 환경에서 이 플래그를 쓰라고 권한다.",
+          "evidence": "Hexdocs의 agy 가이드(v0.1.0, 비공식으로 보임)에 `agy -p \"...\" --dangerously-skip-permissions` 예시가 있다. 검색 결과 요약으로 확인했고, 페이지를 직접 열어 확인하지는 않았다.",
+          "url": "https://hexdocs.pm/agy/agy.epub",
+          "kind": "verified"
+        },
+        {
+          "claim": "agy -p는 stdout이 실제 터미널이 아니면 출력이 비거나 멈출 수 있다. 그래서 pty(의사 터미널)로 감싸 실행하는 브리지 패키지가 있다.",
+          "evidence": "agy-headless-bridge 패키지 설명은 비-TTY에서 `agy -p`가 아무것도 출력하지 않는다고 적는다. GitHub 이슈는 서브프로세스, 파이프, 백그라운드 작업 같은 비-TTY 환경에서 print 모드가 무한정 멈춘다고 보고한다.",
+          "url": "https://socket.dev/pypi/package/agy-headless-bridge",
+          "kind": "verified"
+        },
+        {
+          "claim": "헤드리스나 CI 환경에서는 Gemini API 키를 환경 변수로 주고 agy를 쓰는 방법이 있다. 이 방법은 서드파티 치트시트가 소개한 것이다.",
+          "evidence": "치트시트는 settings.json에서 provider를 gemini로 지정하고 `GEMINI_API_KEY`를 export하라고 설명한다. SSH 환경에서는 브라우저를 열지 않고 인증 URL을 출력한다고도 한다.",
+          "url": "https://computingforgeeks.com/antigravity-cli-cheat-sheet/",
+          "kind": "verified"
+        },
+        {
+          "claim": "agy(Antigravity CLI) 저장소는 2026-05-13에 공개됐고, 개인 계정에서는 2026년 6월에 호스팅형 Gemini CLI를 대체했다고 한다. 이 대체 시점은 서드파티 출처 기준이다.",
+          "evidence": "검색 결과에서 서드파티 치트시트가 위 내용을 서술한다. 공식 문서로 교차 확인하지는 못했다.",
+          "url": "https://computingforgeeks.com/antigravity-cli-cheat-sheet/",
+          "kind": "verified"
+        }
+      ],
+      "caveats": "공식 Antigravity CLI 문서로 --dangerously-skip-permissions와 -p의 권한 동작을 확인하지 못했다. 위 내용은 모두 서드파티 자료와 내 메모에 근거한다. '응답에는 생성했다고 나오는데 파일이 안 생겼다'는 현상이 권한 대기 때문이라는 설명은 서드파티 가이드와 맞지만 공식 확인은 아니다. 출력이 비거나 멈추는 비-TTY 문제는 권한 문제와 별개의 원인일 수 있으니 구분해서 써야 한다. 이 플래그는 이름 그대로 위험하다. 모든 권한 확인을 건너뛰므로 작업 폴더가 격리된 통제 환경에서만 쓰는 편이 안전하다. 다만 이 위험성 자체도 공식 문서로 확인하지는 못했다. '저장된 파일이 실제 이미지로 열리는지 검증한다'는 원칙은 내 설계 판단이며, 원문이 이를 직접 뒷받침하지는 않는다.",
+      "discrepancies": []
+    },
+    {
+      "id": "c2",
+      "headline": "HTTP 429는 인증 오류가 아니라 요청 속도·한도 문제다",
+      "facts": [
+        {
+          "claim": "429 Too Many Requests는 클라이언트가 일정 시간 안에 너무 많은 요청을 보냈다는 뜻의 4xx 응답이다. 요청 속도를 늦추라는 신호이며 레이트 리미팅이라고 부른다.",
+          "evidence": "MDN은 429를 일정 시간 안에 요청을 너무 많이 보냈음을 나타내는 클라이언트 오류 응답으로 설명한다. 명세는 RFC 6585 section 4다.",
+          "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429",
+          "kind": "verified"
+        },
+        {
+          "claim": "429 응답에는 Retry-After 헤더가 포함될 수 있다. 값은 초 단위 숫자이거나 HTTP 날짜 형식이다.",
+          "evidence": "MDN 예시는 `Retry-After: 3600`(60분 후 재시도)이다. 헤더가 없으면 지수 백오프 등으로 간격을 늘리라고 안내한다.",
+          "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429",
+          "kind": "verified"
+        },
+        {
+          "claim": "Gemini API 공식 가이드는 429 RESOURCE_EXHAUSTED를 일시적이라 재시도할 수 있는 오류로 분류한다. 해결책은 지수 백오프(약 1초에서 시작해 2초, 4초, 8초), 지터, 최대 재시도 횟수 제한이다.",
+          "evidence": "Gemini API 트러블슈팅 가이드는 429와 503을 재시도 대상으로 분류한다. Python SDK는 기본적으로 최대 4회까지 자동 재시도한다고 적는다.",
+          "url": "https://ai.google.dev/gemini-api/docs/troubleshooting",
+          "kind": "verified"
+        },
+        {
+          "claim": "잘못되었거나 권한이 없는 API 키 문제는 429가 아니라 403이다. 400, 402, 403은 재시도해도 해결되지 않는 오류로 분류된다.",
+          "evidence": "트러블슈팅 가이드는 400을 잘못된 요청 구문이나 파라미터, 402를 선불 크레딧 소진, 403을 잘못되거나 권한 없는 API 키 문제로 구분하고, 이들은 재시도하지 말라고 안내한다.",
+          "url": "https://ai.google.dev/gemini-api/docs/troubleshooting",
+          "kind": "verified"
+        },
+        {
+          "claim": "Gemini API의 한도는 RPM(분당 요청), TPM(분당 입력 토큰), RPD(일일 요청)로 평가된다. 하나라도 넘으면 다른 한도에 여유가 있어도 오류가 난다. 모델에 따라 이미지 생성용 IPM이나 일일 토큰 한도(TPD)가 추가될 수 있다.",
+          "evidence": "Gemini API 레이트 리밋 문서에 해당 내용이 있다.",
+          "url": "https://ai.google.dev/gemini-api/docs/rate-limits",
+          "kind": "verified"
+        },
+        {
+          "claim": "한도는 API 키 단위가 아니라 프로젝트 단위로 적용된다. 따라서 키를 새로 만들어도 같은 프로젝트의 한도는 풀리지 않는다. RPD는 태평양 시간 자정에 초기화된다.",
+          "evidence": "문서 원문: \"Rate limits are applied per project, not per API key.\" RPD 초기화 시각도 같은 문서에 있다.",
+          "url": "https://ai.google.dev/gemini-api/docs/rate-limits",
+          "kind": "verified"
+        },
+        {
+          "claim": "유료 티어에는 10분 롤링 윈도우의 지출 기반 한도(Tier 1 $10, Tier 2 $50, Tier 3 $200)가 있고, 이를 넘으면 429 RESOURCE_EXHAUSTED가 반환된다. 무료 티어에는 적용되지 않는다.",
+          "evidence": "Gemini API 레이트 리밋 문서에 해당 내용이 있다. 대응책은 잠시 대기 후 재시도, 비용이 큰 요청 줄이기, 한도 상향 요청이다.",
+          "url": "https://ai.google.dev/gemini-api/docs/rate-limits",
+          "kind": "verified"
+        }
+      ],
+      "caveats": "메모의 '429면 API 키 인증 오류'라는 이해는 틀렸다. MDN과 Gemini 공식 문서 모두 429는 속도·한도 문제로 보고, 키 문제는 403으로 구분한다. 그래서 키를 새로 만든 것은 불필요했을 가능성이 크다. 한도가 프로젝트 단위라는 점 때문에 같은 프로젝트에서 새 키를 만들어도 효과가 없었을 것이다. 다만 내가 실제로 받은 429의 구체적 원인(분당 한도, 일일 할당량, 이미지 생성 한도, 지출 한도)은 확인하지 못했다. 오류 본문의 reason 필드를 봐야 알 수 있고, 이 필드를 설명하는 내용은 공식 문서가 아니라 커뮤니티·서드파티 글에서만 확인했다. 포럼에는 사용량이 낮은데도 429가 난다는 보고가 있지만 원인이 확정된 것은 아니라서 글에 단정해서 쓰면 안 된다. 메모 3번(첫 실패에서 남은 카드를 건너뛰고 멈추기)은 설계 판단이다. 공식 가이드는 429를 일시적이라 백오프 재시도 대상으로 보기 때문에, 429에서 바로 멈추는 것은 공식 권장과 다르다. 일일 한도 소진처럼 재시도로 풀리지 않는 경우를 위한 선택이라고 구분해서 써야 한다.",
+      "discrepancies": []
+    }
+  ],
+  "questions": [
+    {
+      "id": "audience",
+      "label": "이 글은 누구에게 쓰나요?",
+      "why": "독자에 따라 429나 헤드리스 개념 설명의 분량과 agy 설정 설명의 깊이가 달라집니다.",
+      "options": [
+        "과거의 나",
+        "입문자",
+        "동료 개발자"
+      ],
+      "recommended": "동료 개발자"
+    },
+    {
+      "id": "format",
+      "label": "글 형식은 무엇으로 할까요?",
+      "why": "형식에 따라 시행착오를 중심에 둘지, 개념 정의를 중심에 둘지가 정해집니다.",
+      "options": [
+        "TIL형",
+        "개념 설명형"
+      ],
+      "recommended": "TIL형"
+    },
+    {
+      "id": "hook",
+      "label": "제목·표지 문구는 어떤 것이 좋을까요?",
+      "why": "확인된 사실(429는 인증 오류가 아니라 한도 문제)만 쓰되, 어떤 점을 앞세울지에 따라 첫인상이 달라집니다.",
+      "options": [
+        "429는 키 오류가 아니다: 키를 다시 만들기 전에 확인할 것",
+        "응답에 '생성했다'고 나와도 파일이 없을 수 있다",
+        "키 재발급 전에 429부터 읽자: 한도는 키가 아니라 프로젝트 단위"
+      ],
+      "recommended": "429는 키 오류가 아니다: 키를 다시 만들기 전에 확인할 것"
+    },
+    {
+      "id": "agy_risk",
+      "label": "--dangerously-skip-permissions의 위험도 글에 넣을까요?",
+      "why": "이 플래그는 모든 권한 확인을 건너뛰어서, 안내 없이 소개하면 독자가 그대로 따라 할 수 있습니다. 다만 공식 문서로는 확인하지 못했습니다.",
+      "options": [
+        "주의 문구를 넣되 비공식 출처라고 밝힌다",
+        "내 환경에서 쓴 경험으로만 짧게 언급한다",
+        "플래그는 빼고 파일로 검증한다는 원칙만 쓴다"
+      ],
+      "recommended": "주의 문구를 넣되 비공식 출처라고 밝힌다"
+    }
+  ],
+  "qVersion": 1,
+  "exportMeta": {
+    "1": {
+      "overflow": false,
+      "at": "2026-10-23T10:08:05.496Z"
+    },
+    "2": {
+      "overflow": false,
+      "at": "2026-10-23T10:08:05.660Z"
+    },
+    "3": {
+      "overflow": false,
+      "at": "2026-10-23T10:08:05.779Z"
+    },
+    "4": {
+      "overflow": false,
+      "at": "2026-10-23T10:08:05.917Z"
+    }
+  },
+  "comparison": {
+    "options": [
+      {
+        "name": "TIL형",
+        "fits": "과거의 나나 같은 도구를 쓰는 동료처럼 실수와 교정 과정을 가볍게 읽고 싶은 독자",
+        "pros": "메모의 시행착오(키 재발급, 파일 미생성)를 그대로 살릴 수 있다. 짧아서 카드뉴스에 잘 맞는다.",
+        "cons": "배경 설명이 얇아서 429 구분 같은 개념의 깊이가 부족할 수 있다."
+      },
+      {
+        "name": "개념 설명형",
+        "fits": "429나 헤드리스 권한을 처음 접하는 입문자",
+        "pros": "정의→예시→주의 구조로 공식 문서에서 확인한 사실을 배치하기 쉽다.",
+        "cons": "내가 겪은 실수라는 개인 맥락이 약해지고, 확인하지 못한 agy 부분이 어색하게 드러날 수 있다."
+      }
+    ],
+    "recommended": "TIL형",
+    "reason": "두 개념 모두 직접 겪은 오해(응답 문장을 믿음, 429를 인증 오류로 봄)와 교정이 핵심이다. TIL형이면 확인된 사실(MDN과 Gemini 공식 문서)과 확인하지 못한 부분(agy 공식 문서)을 솔직하게 나눠 쓰기도 쉽다."
+  },
+  "hookDesign": {
+    "interest": "동료 개발자는 429가 나오면 습관적으로 키부터 새로 만들기 쉽다. 그래서 '그 대응이 왜 소용없었는지'와 대신 확인할 것이 무엇인지에 관심을 가질 것이다.",
+    "candidates": [
+      {
+        "text": "429에 키부터 새로 만들었다면",
+        "evidence": "Gemini 공식 문서는 \"Rate limits are applied per project, not per API key\"라고 밝혀, 같은 프로젝트에서 새 키를 만들어도 한도는 풀리지 않는다.",
+        "risk": "독자를 탓하거나 키 재발급이 항상 무의미하다고 읽힐 수 있으므로, 같은 프로젝트 기준이라는 전제를 본문 첫 카드에 명시한다."
+      },
+      {
+        "text": "429는 키 오류가 아니다",
+        "evidence": "MDN은 429를 요청을 너무 많이 보냈다는 클라이언트 오류로 설명하고, Gemini 트러블슈팅 가이드는 잘못되거나 권한 없는 키 문제를 403으로 구분한다.",
+        "risk": "모든 429의 원인이 한도라고 단정하는 것으로 읽힐 수 있으므로, 분당·일일·지출 한도 중 어느 것인지는 오류 본문의 reason 필드로 확인하라는 흐름으로 잇는다."
+      }
+    ],
+    "chosen": "429는 키 오류가 아니다",
+    "reason": "MDN과 Gemini 공식 문서 두 곳이 직접 뒷받침하는 명제라 근거가 가장 탄탄하다. 첫 후보는 프로젝트 단위 한도라는 전제와 독자를 탓하는 뉘앙스 위험이 있어 한 단계 더 조심스럽다."
+  },
+  "activity": [
+    {
+      "t": "2026-10-23T09:09:08.225Z",
+      "step": "개념 정리",
+      "kind": "fetch",
+      "detail": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429"
+    },
+    {
+      "t": "2026-10-23T09:09:08.711Z",
+      "step": "개념 정리",
+      "kind": "fetch",
+      "detail": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401"
+    },
+    {
+      "t": "2026-10-23T09:09:13.635Z",
+      "step": "개념 정리",
+      "kind": "result",
+      "detail": "원문 수신 · ## 429 Too Many Requests 의미 HTTP `429 Too Many Requests`는 클라이언트가 일정 시간 안에 너무 많은 요청을 보냈다는 뜻의 4xx 클라이언트 오류 응답입니다. 요청 속도를 늦추도록 요청하는 방식을 보통 **레이"
+    },
+    {
+      "t": "2026-10-23T09:09:13.641Z",
+      "step": "개념 정리",
+      "kind": "result",
+      "detail": "원문 수신 · ## 401 Unauthorized 의미 - 요청에 **유효한 인증 자격 증명이 없어서** 리소스 요청이 성공하지 못했음을 뜻하는 클라이언트 오류 응답입니다. - 서버는 클라이언트가 요청에 포함해야 할 **인증 방식**을 알려주는 `WWW-Authen"
+    },
+    {
+      "t": "2026-10-23T09:09:34.752Z",
+      "step": "심층 조사",
+      "kind": "fetch",
+      "detail": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429"
+    },
+    {
+      "t": "2026-10-23T09:09:35.189Z",
+      "step": "심층 조사",
+      "kind": "search",
+      "detail": "Gemini API troubleshooting 429 RESOURCE_EXHAUSTED rate limit error"
+    },
+    {
+      "t": "2026-10-23T09:09:35.645Z",
+      "step": "심층 조사",
+      "kind": "search",
+      "detail": "agy CLI headless -p --dangerously-skip-permissions Antigravity command line"
+    },
+    {
+      "t": "2026-10-23T09:09:40.376Z",
+      "step": "심층 조사",
+      "kind": "result",
+      "detail": "원문 수신 · ## 429 Too Many Requests 요약 **의미** - 클라이언트가 일정 시간 안에 너무 많은 요청을 보냈음을 나타내는 **클라이언트 오류(4xx)** 응답입니다. - 요청 속도를 늦추라고 요청하는 방식으로, 이를 보통 **레이트 리미팅(r"
+    },
+    {
+      "t": "2026-10-23T09:09:41.399Z",
+      "step": "심층 조사",
+      "kind": "result",
+      "detail": "검색 결과 수신 · Web search results for query: \"agy CLI headless -p --dangerously-skip-permissions Antigravity command line\" Links: [{\"title\":\"🎩 You're Invi"
+    },
+    {
+      "t": "2026-10-23T09:09:42.397Z",
+      "step": "심층 조사",
+      "kind": "result",
+      "detail": "검색 결과 수신 · Web search results for query: \"Gemini API troubleshooting 429 RESOURCE_EXHAUSTED rate limit error\" Links: [{\"title\":\"gemini 429 resource exh"
+    },
+    {
+      "t": "2026-10-23T09:09:44.363Z",
+      "step": "심층 조사",
+      "kind": "fetch",
+      "detail": "https://ai.google.dev/gemini-api/docs/troubleshooting"
+    },
+    {
+      "t": "2026-10-23T09:09:45.180Z",
+      "step": "심층 조사",
+      "kind": "fetch",
+      "detail": "https://ai.google.dev/gemini-api/docs/rate-limits"
+    },
+    {
+      "t": "2026-10-23T09:09:51.725Z",
+      "step": "심층 조사",
+      "kind": "result",
+      "detail": "원문 수신 · **측정 단위** - 요청은 분당 요청 수(RPM), 분당 입력 토큰 수(TPM), 일일 요청 수(RPD) 세 가지 기준으로 평가됩니다. - 이 중 하나라도 초과하면 다른 한도에 여유가 있어도 오류가 발생합니다. - 모델에 따라 이미지 생성용 IPM이"
+    },
+    {
+      "t": "2026-10-23T09:09:54.159Z",
+      "step": "심층 조사",
+      "kind": "result",
+      "detail": "원문 수신 · ## 429 RESOURCE_EXHAUSTED와 인증·요청 오류 구분 **429 RESOURCE_EXHAUSTED**는 일시적인 오류로, 같은 요청을 잠시 후 다시 시도할 수 있습니다. 가이드는 이 오류를 503 UNAVAILABLE과 함께 재시도 대"
+    },
+    {
+      "t": "2026-10-23T09:10:40.918Z",
+      "step": "후킹 설계",
+      "kind": "hook",
+      "detail": "후보 1: 429에 키부터 새로 만들었다면 — 위험: 독자를 탓하거나 키 재발급이 항상 무의미하다고 읽힐 수 있으므로, 같은 프로젝트 기준이라는 전제를 본문 첫 카드에 명시한다."
+    },
+    {
+      "t": "2026-10-23T09:10:40.919Z",
+      "step": "후킹 설계",
+      "kind": "hook",
+      "detail": "후보 2: 429는 키 오류가 아니다 — 위험: 모든 429의 원인이 한도라고 단정하는 것으로 읽힐 수 있으므로, 분당·일일·지출 한도 중 어느 것인지는 오류 본문의 reason 필드로 확인하라는 흐름으로 잇는다."
+    },
+    {
+      "t": "2026-10-23T09:10:40.920Z",
+      "step": "후킹 설계",
+      "kind": "hook",
+      "detail": "선정: 429는 키 오류가 아니다"
+    }
+  ],
+  "answers": {
+    "audience": "동료 개발자",
+    "format": "TIL형",
+    "hook": "429는 키 오류가 아니다: 키를 다시 만들기 전에 확인할 것",
+    "agy_risk": "주의 문구를 넣되 비공식 출처라고 밝힌다",
+    "cardCount": "4"
+  },
+  "storyboard": {
+    "version": 4,
+    "styleGuide": "Flat vector editorial illustration with a calm developer-desk mood: deep navy and slate backgrounds, soft teal and warm amber accents, thin clean outlines, subtle paper grain. Simple geometric shapes (keys, gauges, folders, terminal windows without any text), consistent soft lighting, generous empty space in the lower third for text overlay. No letters, numbers, logos, or watermarks.",
+    "cards": [
+      {
+        "n": 1,
+        "role": "표지",
+        "title": "Gemini 429는 키 오류가 아니다",
+        "body": "Gemini API 가이드 기준, 429는 재시도할 수 있는 한도 오류이고 잘못되었거나 권한 없는 키는 403이다.",
+        "source": {
+          "title": "Gemini API 트러블슈팅 가이드",
+          "url": "https://ai.google.dev/gemini-api/docs/troubleshooting"
+        },
+        "visual": "열쇠는 멀쩡한 채로 속도계 바늘이 한계선에 닿아 있는 장면.",
+        "imagePrompt": "Flat vector illustration, a intact golden key lying beside a large speedometer gauge whose needle is pushed to the red limit, deep navy background, teal and amber accents, minimal shapes, no text, no letters, no logos, no watermark, bottom third kept simple and empty",
+        "image": {
+          "status": "ok",
+          "file": "card-1-1792750039394.jpg",
+          "model": "Wikimedia Commons",
+          "worker": "commons",
+          "prompt": "Flat vector illustration, a intact golden key lying beside a large speedometer gauge whose needle is pushed to the red limit, deep navy background, teal and amber accents, minimal shapes, no text, no letters, no logos, no watermark, bottom third kept simple and empty\nStyle: Flat vector editorial illustration with a calm developer-desk mood: deep navy and slate backgrounds, soft teal and warm amber accents, thin clean outlines, subtle paper grain. Simple geometric shapes (keys, gauges, folders, terminal windows without any text), consistent soft lighting, generous empty space in the lower third for text overlay. No letters, numbers, logos, or watermarks.\nPortrait 4:5 composition, keep the lower 45% visually calm for overlaid text. Absolutely no text, letters, numbers, logos or watermarks in the image.",
+          "generatedAt": "2026-10-23T10:07:19.403Z",
+          "category": "CC0·퍼블릭 도메인",
+          "tool": "Wikimedia Commons (사람이 직접 선택)",
+          "license": "CC0",
+          "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+          "creator": "Syced",
+          "sourceUrl": "https://commons.wikimedia.org/wiki/File:2005_car_traffic_in_Taipei.jpg",
+          "title": "2005 car traffic in Taipei",
+          "terms": "CC0 — 라이선스 표시는 Commons 메타데이터 기준입니다. 게시 전에 파일 페이지(https://commons.wikimedia.org/wiki/File:2005_car_traffic_in_Taipei.jpg)에서 라이선스와 사진 속 인물·상표 권리를 확인하세요.",
+          "depiction": "CC0·퍼블릭 도메인 사진이며 이 소식의 실제 발표 현장·제품 화면을 촬영한 자료가 아님"
+        },
+        "qa": {
+          "ok": true,
+          "issue": ""
+        }
+      },
+      {
+        "n": 2,
+        "role": "바로잡은 점",
+        "title": "새 키로는 한도가 안 풀린다",
+        "body": "Gemini 문서에 따르면 한도는 키가 아니라 프로젝트 단위다. 같은 프로젝트에서 키를 새로 만들어도 풀리지 않는다.",
+        "source": {
+          "title": "Gemini API Rate limits",
+          "url": "https://ai.google.dev/gemini-api/docs/rate-limits"
+        },
+        "visual": "여러 개의 열쇠가 하나의 큰 상자(프로젝트)에 연결되어 같은 게이지를 공유하는 그림.",
+        "imagePrompt": "Flat vector illustration, several different keys connected by thin lines to one large box sharing a single gauge on its side, navy and slate background, teal and amber accents, no text, no letters, no logos, no watermark, bottom third simple and uncluttered",
+        "image": {
+          "status": "placeholder",
+          "prompt": "Flat vector illustration, several different keys connected by thin lines to one large box sharing a single gauge on its side, navy and slate background, teal and amber accents, no text, no letters, no logos, no watermark, bottom third simple and uncluttered\nStyle: Flat vector editorial illustration with a calm developer-desk mood: deep navy and slate backgrounds, soft teal and warm amber accents, thin clean outlines, subtle paper grain. Simple geometric shapes (keys, gauges, folders, terminal windows without any text), consistent soft lighting, generous empty space in the lower third for text overlay. No letters, numbers, logos, or watermarks.\nPortrait 4:5 composition, keep the lower 45% visually calm for overlaid text. Absolutely no text, letters, numbers, logos or watermarks in the image.",
+          "category": "대체 배경(이미지 아님)",
+          "note": "이미지 생성을 쓸 수 없어 대체 그라디언트 배경 사용 (실제 이미지 생성 미완료)"
+        },
+        "qa": {
+          "ok": true,
+          "issue": ""
+        }
+      },
+      {
+        "n": 3,
+        "role": "오늘 배운 것",
+        "title": "'생성했다'는 말보다 파일",
+        "body": "비공식 가이드(Hexdocs)는 헤드리스에서 권한 대기를 원인으로 본다. 권한 건너뛰기 플래그는 격리된 환경에서만 쓴다.",
+        "source": {
+          "title": "Hexdocs agy 가이드 (비공식)",
+          "url": "https://hexdocs.pm/agy/agy.epub"
+        },
+        "visual": "터미널 창 옆에 빈 폴더와 돋보기가 놓여, 응답은 있으나 파일이 없는 상황을 보여주는 장면.",
+        "imagePrompt": "Flat vector illustration, an empty terminal window with a speech bubble containing a check mark next to an empty folder being inspected by a magnifying glass, dark slate background, teal and amber accents, no text, no letters, no logos, no watermark, bottom third kept plain",
+        "image": {
+          "status": "placeholder",
+          "prompt": "Flat vector illustration, an empty terminal window with a speech bubble containing a check mark next to an empty folder being inspected by a magnifying glass, dark slate background, teal and amber accents, no text, no letters, no logos, no watermark, bottom third kept plain\nStyle: Flat vector editorial illustration with a calm developer-desk mood: deep navy and slate backgrounds, soft teal and warm amber accents, thin clean outlines, subtle paper grain. Simple geometric shapes (keys, gauges, folders, terminal windows without any text), consistent soft lighting, generous empty space in the lower third for text overlay. No letters, numbers, logos, or watermarks.\nPortrait 4:5 composition, keep the lower 45% visually calm for overlaid text. Absolutely no text, letters, numbers, logos or watermarks in the image.",
+          "category": "대체 배경(이미지 아님)",
+          "note": "이미지 생성을 쓸 수 없어 대체 그라디언트 배경 사용 (실제 이미지 생성 미완료)"
+        },
+        "qa": {
+          "ok": false,
+          "issue": "Hexdocs 가이드는 비대화형 환경에서 동작이 승인을 기다릴 수 있다고만 설명하는데, 카드는 이를 '생성했다는데 파일이 없다'는 현상의 원인으로 단정하고, 이 연결은 공식 확인이 없으며 비-TTY 멈춤 같은 별개 원인일 수 있고 제목의 파일 확인 원칙도 필자 판단이라는 표기가 없다."
+        }
+      },
+      {
+        "n": 4,
+        "role": "정리",
+        "title": "429면 키보다 한도부터 본다",
+        "body": "Gemini 가이드: 429는 재시도 대상, 키 문제는 403이다. 내 판단: agy 헤드리스는 응답 말고 저장된 파일로 확인한다.",
+        "source": {
+          "title": "Gemini API 트러블슈팅 가이드",
+          "url": "https://ai.google.dev/gemini-api/docs/troubleshooting"
+        },
+        "visual": "체크리스트 종이 위에 게이지와 열린 이미지 파일 아이콘이 나란히 놓인 차분한 마무리 장면.",
+        "imagePrompt": "Flat vector illustration, a tidy desk with a checklist sheet, a small gauge and an opened image file icon side by side, navy background, teal and amber accents, calm mood, no text, no letters, no logos, no watermark, bottom third simple and empty",
+        "image": {
+          "status": "placeholder",
+          "prompt": "Flat vector illustration, a tidy desk with a checklist sheet, a small gauge and an opened image file icon side by side, navy background, teal and amber accents, calm mood, no text, no letters, no logos, no watermark, bottom third simple and empty\nStyle: Flat vector editorial illustration with a calm developer-desk mood: deep navy and slate backgrounds, soft teal and warm amber accents, thin clean outlines, subtle paper grain. Simple geometric shapes (keys, gauges, folders, terminal windows without any text), consistent soft lighting, generous empty space in the lower third for text overlay. No letters, numbers, logos, or watermarks.\nPortrait 4:5 composition, keep the lower 45% visually calm for overlaid text. Absolutely no text, letters, numbers, logos or watermarks in the image.",
+          "category": "대체 배경(이미지 아님)",
+          "note": "이미지 생성을 쓸 수 없어 대체 그라디언트 배경 사용 (실제 이미지 생성 미완료)"
+        },
+        "qa": {
+          "ok": true,
+          "issue": ""
+        }
+      }
+    ]
+  },
+  "finalApproved": true,
+  "log": [
+    {
+      "t": "2026-10-23T09:08:24.309Z",
+      "msg": "\"오늘 공부한 것: 뭔가\" 학습 메모에서 개념 후보를 정리합니다."
+    },
+    {
+      "t": "2026-10-23T09:08:32.116Z",
+      "msg": "실패: 메모에서 개념 후보를 만들지 못했습니다. 부족한 점: 개념 이름이 없음: 메모에 \"뭔가 공부했다\"라고만 적혀 있어 어떤 주제인지 알 수 없습니다. / 설명·예시가 없음: 배운 내용, 코드, 사례가 하나도 적혀 있지 않습니다. / 링크가 없음: 원문과 대조하거나 공식 문서로 교차 확인할 근거가 없습니다. / 범위가 불분명함: 분야나 도구, 학습 시간대도 알 수 없어 검색으로 후보를 추정할 수 없습니다. / 후보를 만들려면 오늘 열어 본 브라우저 기록, 터미널 기록, 편집한 파일, 읽은 문서 제목 중 하나라도 있어야 합니다."
+    },
+    {
+      "t": "2026-10-23T09:09:05.629Z",
+      "msg": "메모를 보완했습니다. 개념을 다시 정리합니다."
+    },
+    {
+      "t": "2026-10-23T09:09:05.630Z",
+      "msg": "\"오늘 공부한 것: 뭔가\" 학습 메모에서 개념 후보를 정리합니다."
+    },
+    {
+      "t": "2026-10-23T09:09:29.274Z",
+      "msg": "개념 후보 4건 · 메모의 부족한 점 5건. 다룰 개념을 1~3개 고르세요."
+    },
+    {
+      "t": "2026-10-23T09:09:32.225Z",
+      "msg": "선택: 2건"
+    },
+    {
+      "t": "2026-10-23T09:09:32.227Z",
+      "msg": "선택한 2건의 원문과 근거를 확인합니다."
+    },
+    {
+      "t": "2026-10-23T09:10:28.613Z",
+      "msg": "근거 11건 확인. 편집 방향을 선택해 주세요."
+    },
+    {
+      "t": "2026-10-23T09:10:30.911Z",
+      "msg": "편집 방향 확정. 스토리보드를 작성합니다."
+    },
+    {
+      "t": "2026-10-23T09:10:30.913Z",
+      "msg": "첫 카드 후킹을 설계합니다 (독자 관심 → 후보 2개 → 근거·과장 위험 비교 → 선정)."
+    },
+    {
+      "t": "2026-10-23T09:10:40.921Z",
+      "msg": "후킹 선정: 429는 키 오류가 아니다"
+    },
+    {
+      "t": "2026-10-23T09:11:03.831Z",
+      "msg": "스토리보드 4장 작성 완료. 검토 후 승인해 주세요."
+    },
+    {
+      "t": "2026-10-23T09:11:05.518Z",
+      "msg": "스토리보드 승인. 이미지 제작을 시작합니다."
+    },
+    {
+      "t": "2026-10-23T09:11:05.519Z",
+      "msg": "카드 1/4 이미지 생성 중…"
+    },
+    {
+      "t": "2026-10-23T09:11:57.101Z",
+      "msg": "카드 1 이미지 실패: agy가 이미지 파일을 만들지 못했습니다. (응답: ion tool subagent with the exact scene description, composition requirements (portrait 4:5, lower 45% calm/uncluttered, no text/letters/numbers/logos/watermarks), and target file path (`card_bg.png`). Waiting for the generation to complete.)"
+    },
+    {
+      "t": "2026-10-23T09:11:57.102Z",
+      "msg": "카드 2/4 이미지 생성 중…"
+    },
+    {
+      "t": "2026-10-23T09:12:03.472Z",
+      "msg": "카드 2 이미지 실패: agy가 이미지 파일을 만들지 못했습니다. (응답: dividual quota reached. Please upgrade your subscription to increase your limits. Resets in 161h37m15s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"error_code\":429,\"code_kind\":\"http\",\"retryable\":true,\"error_id\":\"2e0321cc-7a9b-42b1-9273-581ae9770e38-1\"})"
+    },
+    {
+      "t": "2026-10-23T09:12:03.473Z",
+      "msg": "카드 3/4 이미지 생성 중…"
+    },
+    {
+      "t": "2026-10-23T09:12:11.113Z",
+      "msg": "카드 3 이미지 실패: agy가 이미지 파일을 만들지 못했습니다. (응답: ndividual quota reached. Please upgrade your subscription to increase your limits. Resets in 161h37m8s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"error_code\":429,\"code_kind\":\"http\",\"retryable\":true,\"error_id\":\"71fe5a2e-7869-470c-b8d5-09b130f784c8-1\"})"
+    },
+    {
+      "t": "2026-10-23T09:12:11.114Z",
+      "msg": "카드 4/4 이미지 생성 중…"
+    },
+    {
+      "t": "2026-10-23T09:12:17.051Z",
+      "msg": "카드 4 이미지 실패: agy가 이미지 파일을 만들지 못했습니다. (응답: ndividual quota reached. Please upgrade your subscription to increase your limits. Resets in 161h37m2s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"error_code\":429,\"code_kind\":\"http\",\"retryable\":true,\"error_id\":\"9aafe0b7-0487-4e80-8cfe-1f6e6eed4eae-1\"})"
+    },
+    {
+      "t": "2026-10-23T09:12:17.051Z",
+      "msg": "실패: 이미지 생성이 중단되었습니다 (실패 4장). 성공한 카드는 유지됩니다. (agy가 이미지 파일을 만들지 못했습니다. (응답: ndividual quota reached. Please upgrade your subscription to increase your limits. Resets in 161h37m2s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"error_code\":429,\"code_kind\":\"http\",\"retryable\":true,\"error_id\":\"9aafe0b7-0487-4e80-8cfe-1f6e6eed4eae-1\"}))"
+    },
+    {
+      "t": "2026-10-23T09:13:00.861Z",
+      "msg": "카드 1/4 이미지 생성 중…"
+    },
+    {
+      "t": "2026-10-23T09:13:06.754Z",
+      "msg": "카드 1 이미지 실패: agy가 이미지 파일을 만들지 못했습니다. (응답: dividual quota reached. Please upgrade your subscription to increase your limits. Resets in 161h36m12s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"error_code\":429,\"code_kind\":\"http\",\"retryable\":true,\"error_id\":\"9e29e9df-76af-4933-89f4-48901305a186-1\"})"
+    },
+    {
+      "t": "2026-10-23T09:13:06.755Z",
+      "msg": "실패: 이미지 생성이 중단되었습니다 (실패 1장, 미시도 3장). 성공한 카드는 유지됩니다. (agy가 이미지 파일을 만들지 못했습니다. (응답: dividual quota reached. Please upgrade your subscription to increase your limits. Resets in 161h36m12s.\",\"status\":\"RESOURCE_EXHAUSTED\",\"error_code\":429,\"code_kind\":\"http\",\"retryable\":true,\"error_id\":\"9e29e9df-76af-4933-89f4-48901305a186-1\"}))"
+    },
+    {
+      "t": "2026-10-23T09:13:16.212Z",
+      "msg": "이미지 생성 대신 대체 배경으로 계속합니다. (실제 이미지 생성은 미완료로 기록)"
+    },
+    {
+      "t": "2026-10-23T09:13:16.214Z",
+      "msg": "블로그 포스트(마크다운)를 작성합니다."
+    },
+    {
+      "t": "2026-10-23T09:13:38.379Z",
+      "msg": "포스트 작성 완료: 429는 키 오류가 아니다"
+    },
+    {
+      "t": "2026-10-23T09:13:38.380Z",
+      "msg": "사실·출처 검수 중…"
+    },
+    {
+      "t": "2026-10-23T09:13:51.095Z",
+      "msg": "검수: 2장에서 확인이 필요한 점이 있습니다."
+    },
+    {
+      "t": "2026-10-23T09:13:51.096Z",
+      "msg": "결과를 검토하고, 고칠 카드를 지정하거나 최종 승인하세요."
+    },
+    {
+      "t": "2026-10-23T09:14:39.260Z",
+      "msg": "카드 1 글 수정: 검수 지적을 반영해 고쳐 줘: '키 문제는 403' 구분은 Gemini 트러블슈팅 가이드의 내용인데 출처가 MDN으로만 표기되어 있고, Gemini API 기준이라는 한정 없이 일반 HTTP 규칙처럼 쓰였다. 출처가 확인해 준 내용만 사실로 쓰고, 내 설계 판단이나 다른 문서에서 온 내용은 \"내 판단\" 또는 해당 출처를 밝혀서 구분해 줘."
+    },
+    {
+      "t": "2026-10-23T09:14:52.300Z",
+      "msg": "카드 1 수정 완료. 다른 카드는 유지되었습니다."
+    },
+    {
+      "t": "2026-10-23T09:14:52.301Z",
+      "msg": "사실·출처 검수 중…"
+    },
+    {
+      "t": "2026-10-23T09:15:05.598Z",
+      "msg": "검수: 2장에서 확인이 필요한 점이 있습니다."
+    },
+    {
+      "t": "2026-10-23T09:15:05.599Z",
+      "msg": "결과를 검토하고, 고칠 카드를 지정하거나 최종 승인하세요."
+    },
+    {
+      "t": "2026-10-23T09:15:05.899Z",
+      "msg": "카드 4 글 수정: 검수 지적을 반영해 고쳐 줘: '성공 여부는 저장된 파일로 확인한다'는 agy 헤드리스에 관한 작성자의 설계 판단인데, 429 관련 Gemini 트러블슈팅 가이드를 출처로 단 카드에 근거처럼 섞여 있다. 출처가 확인해 준 내용만 사실로 쓰고, 내 설계 판단이나 다른 문서에서 온 내용은 \"내 판단\" 또는 해당 출처를 밝혀서 구분해 줘."
+    },
+    {
+      "t": "2026-10-23T09:15:17.113Z",
+      "msg": "카드 4 수정 완료. 다른 카드는 유지되었습니다."
+    },
+    {
+      "t": "2026-10-23T09:15:17.114Z",
+      "msg": "사실·출처 검수 중…"
+    },
+    {
+      "t": "2026-10-23T09:15:27.614Z",
+      "msg": "검수: 1장에서 확인이 필요한 점이 있습니다."
+    },
+    {
+      "t": "2026-10-23T09:15:27.615Z",
+      "msg": "결과를 검토하고, 고칠 카드를 지정하거나 최종 승인하세요."
+    },
+    {
+      "t": "2026-10-23T09:15:50.491Z",
+      "msg": "최종 승인. 내려받을 수 있습니다."
+    },
+    {
+      "t": "2026-10-23T10:07:04.104Z",
+      "msg": "최종 승인을 풀고 검수 단계로 돌아왔습니다. 고친 뒤 다시 승인하세요."
+    },
+    {
+      "t": "2026-10-23T10:07:18.343Z",
+      "msg": "카드 1: 고른 CC0·퍼블릭 도메인 이미지를 내려받습니다."
+    },
+    {
+      "t": "2026-10-23T10:07:19.403Z",
+      "msg": "카드 1 이미지를 교체했습니다: 2005 car traffic in Taipei (CC0, Syced)"
+    },
+    {
+      "t": "2026-10-23T10:08:03.760Z",
+      "msg": "최종 승인. 내려받을 수 있습니다."
+    }
+  ]
+}

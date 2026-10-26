@@ -1,0 +1,201 @@
+{
+  "topic": "AI 최신소식",
+  "asOf": "2026. 10. 23. 17시 54분 58초 (KST)",
+  "window": "2026-10-16 ~ 2026-10-23",
+  "articles": [
+    {
+      "title": "Anthropic, Opus 5.5 기반 프로액티브 에이전트 'Claude Duet' 미국 Pro·Max 대기자 명단 공개",
+      "date": "2026-10-21",
+      "announcedOn": "미확인",
+      "url": "https://claude.com/product/claude-duet",
+      "source": "Claude(Anthropic) 제품 페이지"
+    }
+  ],
+  "facts": [
+    {
+      "id": "c1",
+      "headline": "Anthropic, 미국 Pro·Max 대상 프로액티브 에이전트 'Claude Duet' 대기자 명단 공개",
+      "changes": "먼저 말을 걸어야 하는 기존 채팅과 달리, Duet는 아침 브리핑을 보내고 연결된 앱을 주기적으로 확인해 처리할 일을 알려 주는 에이전트입니다. 메시지 전송이나 결제 같은 민감한 작업은 사용자 승인을 받고 진행합니다.",
+      "conditions": {
+        "who": "미국의 Claude Pro·Max 구독자 (대기자 명단 신청)",
+        "since": "2026-10-21 발표, 리서치 프리뷰. 대기자 명단 방식이라 개별 접근 시점은 미확인",
+        "region": "미국만 해당. 그 외 지역 제공 계획은 미확인",
+        "plan": "Pro·Max만 해당. Team·Enterprise는 아직 포함되지 않음. 사용량은 기존 플랜 한도를 공유하고 백그라운드 확인도 한도에 포함됨",
+        "other": "웹(claude.ai)에서 쓸 수 있고 iOS 앱이 있음. Android는 공식 페이지에는 있으나 MacRumors 기사에는 없음. 별도 요금은 미확인"
+      },
+      "facts": [
+        {
+          "kind": "verified",
+          "claim": "Claude Duet는 Opus 5.5 기반 프로액티브 에이전트로, 리서치 프리뷰 단계다.",
+          "evidence": "공식 제품 페이지에 'Powered by Opus 5.5'와 리서치 프리뷰라는 표시가 있고, MacRumors도 Opus 5.5 기반이라고 보도함.",
+          "url": "https://claude.com/product/claude-duet"
+        },
+        {
+          "kind": "verified",
+          "claim": "미국의 Pro·Max 구독자만 대기자 명단('Join the waitlist')으로 접근할 수 있고, Team·Enterprise는 아직 포함되지 않는다.",
+          "evidence": "공식 페이지에 미국 Pro·Max 한정, Team·Enterprise 미포함, 대기자 명단 버튼이 명시되어 있음. MacRumors도 같은 내용을 보도함.",
+          "url": "https://claude.com/product/claude-duet"
+        },
+        {
+          "kind": "verified",
+          "claim": "Duet는 매일 아침 연결된 앱의 중요한 항목을 요약해 보낸다.",
+          "evidence": "공식 페이지에 morning brief 기능이 있고, MacRumors에도 매일 아침 짧은 요약을 보낸다고 나옴.",
+          "url": "https://macrumors.com/2026/10/21/anthropic-claude-duet/"
+        },
+        {
+          "kind": "verified",
+          "claim": "연결된 앱을 몇 시간마다 확인하고, 주의가 필요하면 알린다.",
+          "evidence": "MacRumors가 몇 시간마다 앱을 확인하고 알림을 보낸다고 보도함. 공식 페이지에는 받은편지함·일정 항목 표시와 '확인하는 사이에 도착한 것은 놓칠 수 있다'는 한계 문구가 있음.",
+          "url": "https://macrumors.com/2026/10/21/anthropic-claude-duet/"
+        },
+        {
+          "kind": "verified",
+          "claim": "메시지 전송이나 결제 같은 민감한 작업은 사용자에게 먼저 묻는다.",
+          "evidence": "공식 페이지에 'asks you before sensitive operations like sending messages or paying'이라고 적혀 있음. MacRumors는 서명·파일 삭제도 승인 대상이라고 보도함.",
+          "url": "https://claude.com/product/claude-duet"
+        },
+        {
+          "kind": "verified",
+          "claim": "Duet는 자체 클라우드 컴퓨터에서 작업하며, 일을 끝내거나 결정이 필요하면 메시지를 보낸다.",
+          "evidence": "공식 페이지가 별도 클라우드 컴퓨터에서 연결된 앱으로 작업한다고 설명함. MacRumors는 브라우저가 있는 가상 머신이라고 보도함.",
+          "url": "https://claude.com/product/claude-duet"
+        },
+        {
+          "kind": "verified",
+          "claim": "프리뷰 기간에 Duet의 사용량은 Claude 플랜 한도를 공유하며, 백그라운드 확인도 한도에 포함된다.",
+          "evidence": "공식 페이지가 플랜 한도 공유와 백그라운드 확인 포함을 명시함. 구체적인 수치는 없음.",
+          "url": "https://claude.com/product/claude-duet"
+        },
+        {
+          "kind": "verified",
+          "claim": "Anthropic은 Duet가 스레드를 잘못 읽거나 긴급도를 잘못 판단할 수 있다고 직접 밝혔다.",
+          "evidence": "공식 페이지에 'may misread a thread or miscalibrate what's urgent' 문구가 있음.",
+          "url": "https://claude.com/product/claude-duet"
+        },
+        {
+          "kind": "claim",
+          "claim": "Anthropic은 Duet가 6,000개 이상의 커넥터·플러그인과 연동된다고 밝혔다.",
+          "evidence": "공식 페이지의 문구로, 실제 연동 수와 품질은 독립적으로 확인하지 못함.",
+          "url": "https://claude.com/product/claude-duet"
+        },
+        {
+          "kind": "unverified",
+          "claim": "Android 앱 제공 여부",
+          "evidence": "공식 페이지는 iOS·Android 앱을 언급하지만 MacRumors는 iOS만 언급함. 실제 출시 상태는 확인하지 못함.",
+          "url": ""
+        },
+        {
+          "kind": "unverified",
+          "claim": "대기자 명단 승인 시점, 미국 외 지역 확대 계획, Team·Enterprise 포함 시점",
+          "evidence": "공식 페이지와 보도에서 일정을 찾지 못함.",
+          "url": ""
+        }
+      ],
+      "discrepancies": [
+        "공식 페이지는 iOS·Android 독립 앱과 웹을 말하지만 MacRumors는 웹과 iOS 앱만 언급하고 Android는 언급하지 않는다.",
+        "공식 페이지에는 게시일이 없고(© 2026만 표기, 예시 화면은 10월 19일 월요일), 선택 목록은 게시일을 2026-10-21로 적었다. MacRumors의 2026-10-21 보도와는 일치한다. 일부 매체는 발표 요일을 서로 다르게 적었다."
+      ],
+      "caveats": "공식 페이지와 MacRumors 기사 외에 릴리스 노트·changelog·도움말 문서는 찾지 못했다. 대기자 명단이라 실제로 바로 쓸 수 있는 독자는 많지 않다. 리서치 프리뷰라 기능과 조건이 바뀔 수 있다. 성능·정확도에 대한 독립 검증은 없다.",
+      "comparison": {
+        "options": [
+          {
+            "name": "체크리스트형",
+            "fits": "Duet를 써 볼 수 있는지, 신청해도 되는지 먼저 따져 보려는 독자",
+            "pros": "미국·Pro/Max·대기자 명단·사용량 한도 같은 확인된 조건을 빠짐없이 짚을 수 있고, 지역 제한이 있는 소식에 맞음",
+            "cons": "기능의 매력이나 실제 사용 장면은 덜 전달됨"
+          },
+          {
+            "name": "이야기형",
+            "fits": "AI 에이전트가 일상에 어떻게 쓰이는지 궁금한 일반 독자",
+            "pros": "아침 브리핑, 부재 중 작업, 승인 요청의 흐름이 눈에 잘 들어오고 한계로 마무리하기 좋음",
+            "cons": "사용 장면이 공식 예시에 의존하고 실제 사용 후기가 없어 과장될 위험이 있음"
+          }
+        ],
+        "recommended": "체크리스트형",
+        "reason": "소식이 1건이고 핵심이 미국 Pro·Max 한정 대기자 명단이라는 접근 조건이므로, 확인된 조건을 점검하는 형식이 독자에게 가장 쓸모 있습니다. 기능 설명은 한두 장으로 덧붙이면 됩니다."
+      },
+      "answered": {},
+      "questions": [
+        {
+          "id": "audience",
+          "label": "주 독자는 누구인가요?",
+          "why": "대기자 명단 소식이라 접근 조건을 확인하려는 일반 유료 구독자에게 가장 직접적으로 쓸모가 있습니다.",
+          "options": [
+            "일반 사용자: 아침 브리핑과 승인 방식, 신청 조건을 알고 싶은 독자",
+            "개발자: 커넥터 연동과 클라우드 작업 방식에 관심 있는 독자",
+            "업무 자동화 관심층: 메일·일정 정리에 활용할 방법을 찾는 직장인"
+          ],
+          "recommended": "일반 사용자: 아침 브리핑과 승인 방식, 신청 조건을 알고 싶은 독자"
+        },
+        {
+          "id": "format",
+          "label": "어떤 카드 형식으로 만들까요?",
+          "why": "지역·요금제 제한이 핵심인 단일 소식이라 조건 점검형이 가장 정확하게 전달됩니다.",
+          "options": [
+            "체크리스트형",
+            "이야기형"
+          ],
+          "recommended": "체크리스트형"
+        },
+        {
+          "id": "hook",
+          "label": "표지 문구는 어떤 것으로 할까요?",
+          "why": "확인된 사실만 쓰면서 조건(미국·Pro·Max·대기자 명단)을 숨기지 않는 문구가 오해를 줄입니다.",
+          "options": [
+            "Claude Duet, 먼저 말 거는 AI 에이전트 – 미국 Pro·Max 대기자 명단 시작",
+            "아침 브리핑을 보내는 Claude Duet, 결제·전송은 승인 후에만",
+            "Claude Duet 신청 전 확인할 것: 미국·Pro·Max·대기자 명단"
+          ],
+          "recommended": "Claude Duet 신청 전 확인할 것: 미국·Pro·Max·대기자 명단"
+        }
+      ]
+    }
+  ],
+  "cardSources": [
+    {
+      "card": 1,
+      "title": "Duet 신청 전 확인할 4가지",
+      "source": {
+        "title": "Claude Duet 공식 제품 페이지",
+        "url": "https://claude.com/product/claude-duet",
+        "reportedOn": "2026-10-21"
+      }
+    },
+    {
+      "card": 2,
+      "title": "미국 · Pro·Max · 대기자 명단",
+      "source": {
+        "title": "Claude Duet 공식 제품 페이지",
+        "url": "https://claude.com/product/claude-duet",
+        "reportedOn": "2026-10-21"
+      }
+    },
+    {
+      "card": 3,
+      "title": "사용량은 기존 플랜 한도 공유",
+      "source": {
+        "title": "Claude Duet 공식 제품 페이지",
+        "url": "https://claude.com/product/claude-duet",
+        "reportedOn": "2026-10-21"
+      }
+    },
+    {
+      "card": 4,
+      "title": "아침 브리핑, 민감한 일은 승인 후",
+      "source": {
+        "title": "Claude Duet 공식 제품 페이지",
+        "url": "https://claude.com/product/claude-duet",
+        "reportedOn": "2026-10-21"
+      }
+    },
+    {
+      "card": 5,
+      "title": "신청 전 알아둘 한계",
+      "source": {
+        "title": "Claude Duet 공식 제품 페이지",
+        "url": "https://claude.com/product/claude-duet",
+        "reportedOn": "2026-10-21"
+      }
+    }
+  ]
+}

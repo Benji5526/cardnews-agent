@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>카드뉴스 에이전트</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>카드뉴스 에이전트</h1>
+  <div id="health" class="health"></div>
+  <div class="spacer"></div>
+  <select id="jobs" title="이전 작업"></select>
+  <button id="newJob" class="ghost">새 작업</button>
+</header>
+<ol id="steps" class="steps"></ol>
+<main>
+  <section id="view"></section>
+  <aside>
+    <h3>진행 기록</h3>
+    <ul id="log"></ul>
+  </aside>
+</main>
+<script src="/render.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
