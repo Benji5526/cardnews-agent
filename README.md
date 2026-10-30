@@ -5,6 +5,25 @@
 - 모드 1 **최신 소식 카드뉴스**: "AI 최신소식" → 최근 7일 후보 7~12건 → 선택 → 심층 검증 → 카드 5~8장
 - 모드 2 **학습일지 → 블로그 포스트 + 요약 카드**: 오늘 공부한 메모 → 개념 후보 → 선택 → 원문 대조 → `post.md` + 카드 3~8장
 - 모드 3 **호주 데일리 뉴스**: 시드니 기준 최근 24시간의 호주 큰 뉴스 3~4건을 한국어로 요약 번역해 한 편(5~6장)으로 자동 제작 → 사람이 검수·승인 (`npm run daily`)
+- 모드 4 **한국·동남아 음식·웰니스 뉴스**: 한국 시간 기준 최근 7일의 음식·식당·웰니스 소식 3~4건을 한국어로 요약해 자동 제작 → 사람이 검수·승인 (`npm run daily -- --mode fw`)
+- 승인한 카드는 화면의 **"Discord에 올리기"** 버튼으로 웹훅 채널에 발행할 수 있다(`DISCORD_WEBHOOK_URL`, 선택).
+
+## 한눈에 보기
+
+실제로 만들어진 카드 예시(호주 데일리 뉴스, 시드니 기준 2026-10-26, 6장). 카드마다 출처 매체와 "한국어 번역·요약" 표기가 들어가고, 기사 사진 대신 단색 배경을 쓴다.
+
+<p>
+  <img src="docs/samples/au-01.jpg" width="150" alt="표지"> <img src="docs/samples/au-02.jpg" width="150" alt="RBA 금리"> <img src="docs/samples/au-03.jpg" width="150" alt="웨스턴시드니 공항">
+  <img src="docs/samples/au-04.jpg" width="150" alt="정치"> <img src="docs/samples/au-05.jpg" width="150" alt="노인 돌봄"> <img src="docs/samples/au-06.jpg" width="150" alt="정리·출처">
+</p>
+
+다른 모드의 결과와 화면:
+
+| 최신 소식 카드뉴스 | 학습일지 요약 카드 | 승인 후 화면 |
+|---|---|---|
+| <img src="submission/evidence/news/cards/card-02.png" width="180"> | <img src="submission/evidence/journal/cards/card-02.png" width="180"> | <img src="submission/evidence/screens/01-done-view.jpg" width="260"> |
+
+작업 흐름: 주제 입력 → 넓은 조사 → (선택) → 심층 검증 → 스토리보드 → 카드 제작 → 검수 → **사람이 최종 승인** → PNG·ZIP 내려받기 또는 Discord 발행. 호주·음식 웰니스 모드는 선택·질문 단계를 서버가 대신 진행하고, 승인은 항상 사람이 한다.
 
 ## 준비
 
@@ -35,6 +54,7 @@ npm start                # http://localhost:4310
 | `AGY_ALLOW_ALL_TOOLS` | `1`이면 agy 실행의 모든 도구 요청을 자동 승인(빈 작업 폴더에서만 실행). **켜기 전에 DECISIONS.md의 권한 절을 읽을 것** | 꺼짐 |
 | `AGY_BIN` | agy 실행 파일 경로 | `D:\Tools\agy\bin\agy.exe` 또는 PATH의 `agy` |
 | `CLAUDE_BIN` / `CLAUDE_MODEL` | Claude CLI 경로 / 모델 | claude / sonnet |
+| `DISCORD_WEBHOOK_URL` | 승인한 카드를 올릴 Discord 웹훅 주소. **채팅·커밋에 붙여넣지 말 것.** 없으면 발행 버튼이 안내 오류를 낸다 | 없음 |
 
 이미지 작업자를 쓸 수 없으면(키·권한 없음) 카드는 대체 그라디언트 배경으로 진행하고 "실제 이미지 생성 미완료"로 기록한다. 상단의 "이미지 1장 테스트"로 연결을 먼저 확인할 수 있다.
 
