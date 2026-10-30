@@ -3,7 +3,7 @@ import path from 'node:path';
 import { AskOpts, askClaude, EngineError, NoImageKeyError } from './engines.js';
 import { generateCardImage, inspectImage } from './imageWorker.js';
 import { fetchStock } from './stock.js';
-import { Card, Candidate, FormatComparison, HookDesign, Job, Question, ResearchItem, addActivity, jobDir, log, save } from './store.js';
+import { Card, Candidate, FormatComparison, HookDesign, Job, Question, ResearchItem, addActivity, isAuto, jobDir, log, save } from './store.js';
 
 const KST = (d: Date) => d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
 const ymd = (d: Date) => new Date(d.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
@@ -36,6 +36,39 @@ const AU_STORYBOARD = `- 이것은 호주 뉴스 다이제스트입니다. 표�
 - 날짜는 시드니 기준입니다. "오늘"은 기준일 하루만 가리키며, 그 전날 일은 "어제"나 날짜로 쓰세요.
 - 기사 문장을 그대로 옮기지 말고 요약·번역하세요.
 `;
+
+// ---------- 음식·식당·웰니스 뉴스(한국·동남아) 전용 보조 ----------
+const FW_NOTE = `
+[음식·식당·웰니스 뉴스 다이제스트] 독자는 한국과 동남아의 음식·식당·웰니스 소식이 궁금한 한국 독자입니다. 모든 항목(headline, changes, facts의 claim 등)을 자연스러운 한국어로 요약해 쓰세요. 외국어 기사는 번역하고 인명·지명·식당·브랜드 이름은 한국어 표기를 쓰되 처음 한 번 원문 표기를 병기하세요. 가격·영업시간·예약 방법은 기사에 있을 때만, 기사 날짜와 함께 쓰세요. 건강·치료·효능 주장은 사실처럼 단정하지 말고 "~라고 보도했다"처럼 출처를 밝히세요. 식당이나 사람에 대한 부정적 논란 기사는 다루지 마세요.
+`;
+
+const FW_STORYBOARD = `- 이것은 한국·동남아 음식·식당·웰니스 뉴스 다이제스트입니다. 표지 1장(role "표지": 이번 소식 묶음을 한 문장으로 궁금하게 만드는 한국어 후킹), 선택된 뉴스마다 카드 정확히 1장(role은 "음식·식당" 또는 "웰니스" 중 하나, title 24자 이내 한국어, body 90자 이내: 무슨 일·어디서·언제·무엇이 달라지는지 중 확인된 것만), 마지막 1장(role "정리·출처": 한 줄 정리와 출처 매체). 카드 수는 뉴스 수 + 2장입니다.
+- 선택된 뉴스는 하나도 빠뜨리지 말고, 한 뉴스를 두 장으로 쪼개지도 마세요. 표지·정리 카드가 말하는 뉴스 건수와 주제는 실제 카드와 정확히 같아야 합니다.
+- 정리 카드에는 필자의 해석·전망·추천을 쓰지 말고 확인된 사실의 요약과 출처만 쓰세요. 건강·효능 표현은 기사가 말한 범위 안에서 출처를 밝혀 쓰고, 의학적 조언처럼 쓰지 마세요.
+- 가격·예약·영업시간은 기사에 있을 때만 쓰고 기사 날짜를 함께 쓰세요. 날짜는 한국 시간(KST) 기준입니다.
+- 기사 문장을 그대로 옮기지 말고 요약하세요.
+`;
+
+function fwSearchPrompt(job: Job): string {
+  const s = job.search!;
+  return `당신은 음식·웰니스 뉴스 편집자입니다. 웹 검색(WebSearch)과 원문 읽기(WebFetch)로 한국과 동남아시아의 음식·식당 소식과 웰니스 소식을 찾으세요.
+
+기준 시각: ${s.asOfLabel}
+기간: ${s.from} ~ ${s.to} (한국 날짜 기준, 이 기간에 보도된 뉴스만)
+독자: 한국과 동남아의 음식·식당·웰니스가 궁금한 한국 독자
+
+규칙:
+- 주제는 두 갈래입니다. (1) 음식·식당: 셰프·레스토랑 신규 오픈·수상·팝업·메뉴 소식, 미식 여행. (2) 웰니스: 스파·리트릿·웰니스 관광, 건강식·식단 트렌드, 템플스테이·사찰음식, 명상·수면·운동 시설. 두 갈래가 모두 섞이게 하세요.
+- 지역은 한국과 동남아(태국·베트남·인도네시아(발리)·싱가포르·말레이시아·필리핀 등)입니다. 한국과 동남아가 모두 들어가게 하세요.
+- 한국 매체(연합뉴스·한국경제·매일경제·조선일보·중앙일보·코리아헤럴드·코리아타임스)와 동남아 영어 매체(Bangkok Post, The Straits Times, The Jakarta Post, VnExpress International, Tatler Asia, Travel + Leisure Asia, Condé Nast Traveler, Eater 등)를 우선 확인하세요. 광고성 기사와 보도자료를 그대로 옮긴 글은 뒤로 미루세요.
+- 서로 다른 뉴스 6~10건을 중요도가 높은 순서로 정렬해 반환하세요. 같은 사건을 다룬 기사는 하나로 합치세요. 식당·사람에 대한 사고·논란·소송 기사는 제외하세요.
+- 각 후보의 원문(기사 페이지)을 WebFetch로 직접 열어 제목과 날짜를 확인하세요. 열지 못했거나 날짜를 확신할 수 없으면 제외하세요.
+- title: 원문 제목을 한국어로 번역·요약(식당·인명·지명은 한국어 표기, 필요하면 원문 병기). originalTitle: 원제. summary: 한국어 2문장 이내 요약(원문에 있는 내용만). category: 음식·식당/웰니스 중 하나. date: 원문 게시일(YYYY-MM-DD). announcedOn: 사건이 일어났거나 발표된 날(YYYY-MM-DD), 확인되지 않으면 정확히 "미확인". value: 독자가 알아둘 이유 한 문장. uncertainty: 확인하지 못한 점·주의할 점 한 문장(예: 가격 기준일, 효능 주장의 근거). url: 실제로 연 원문 주소. source: 매체명.
+- 없는 내용을 지어내지 마세요. 기사 전문을 그대로 옮기지 말고 요약하세요.
+
+아래 JSON만 출력하세요(설명 금지):
+{"items":[{"title":"","originalTitle":"","summary":"","category":"","date":"YYYY-MM-DD","announcedOn":"YYYY-MM-DD 또는 미확인","value":"","uncertainty":"","url":"https://...","source":""}]}`;
+}
 
 function auSearchPrompt(job: Job): string {
   const s = job.search!;
@@ -96,14 +129,15 @@ export async function runAuto(job: Job): Promise<void> {
     if (job.error) throw new EngineError(job.error.message, job.error.hint);
   };
   try {
-    log(job, '호주 데일리 뉴스 자동 제작을 시작합니다. 완료되면 검수 화면에서 확인·승인하세요.');
-    await step('search', 1);
+    log(job, `${job.mode === 'fw' ? '음식·식당·웰니스 뉴스' : '호주 데일리 뉴스'} 자동 제작을 시작합니다. 완료되면 검수 화면에서 확인·승인하세요.`);
+    await step('search', job.mode === 'fw' ? 7 : 1);
 
     // 중요도 순으로 정렬돼 온 후보 중 원문을 실제로 연 것을 우선해 3~4건을 고른다.
     const ranked = [...job.candidates.filter((c) => c.opened), ...job.candidates.filter((c) => !c.opened)];
     const pick = ranked.slice(0, 4);
+    const place = job.mode === 'fw' ? '음식·웰니스 뉴스' : '호주의 큰 뉴스';
     if (pick.length < 2) {
-      throw new EngineError(`호주의 큰 뉴스를 충분히 확인하지 못했습니다 (${pick.length}건).`, '잠시 뒤 다시 실행하거나, 화면에서 직접 후보를 고르세요.');
+      throw new EngineError(`${place}를 충분히 확인하지 못했습니다 (${pick.length}건).`, '잠시 뒤 다시 실행하거나, 화면에서 직접 후보를 고르세요.');
     }
     job.selected = pick.map((c) => c.id);
     job.answers = {};
@@ -115,7 +149,7 @@ export async function runAuto(job: Job): Promise<void> {
     // 질문은 추천 답으로 채운다. 독자와 형식은 이 모드의 고정값을 쓴다.
     const ans: Record<string, string> = {};
     for (const q of job.questions) ans[q.id] = q.recommended;
-    ans.audience = '호주 소식이 궁금한 한국 독자';
+    ans.audience = job.mode === 'fw' ? '한국과 동남아의 음식·식당·웰니스 소식이 궁금한 한국 독자' : '호주 소식이 궁금한 한국 독자';
     ans.format = '뉴스 다이제스트형(뉴스별 카드 한 장)';
     ans.cardCount = String(pick.length + 2);
     job.answers = { ...job.answers, ...ans };
@@ -225,7 +259,7 @@ const search: Task = async (job, days: number) => {
   job.stage = 'search';
   log(job, `"${job.topic}" 조사 시작: ${job.search.from} ~ ${job.search.to} (최근 ${days}일)`);
 
-  const prompt = job.mode === 'au' ? auSearchPrompt(job) : `당신은 뉴스 리서처입니다. 웹 검색(WebSearch)과 원문 읽기(WebFetch)로 아래 주제의 소식을 조사하세요.
+  const prompt = job.mode === 'au' ? auSearchPrompt(job) : job.mode === 'fw' ? fwSearchPrompt(job) : `당신은 뉴스 리서처입니다. 웹 검색(WebSearch)과 원문 읽기(WebFetch)로 아래 주제의 소식을 조사하세요.
 
 주제: ${job.topic}
 기준 시각: ${job.search.asOfLabel}
@@ -271,7 +305,7 @@ const search: Task = async (job, days: number) => {
     ...it, id: `c${i + 1}`, announcedOn: ISO.test(it.announcedOn ?? '') ? it.announcedOn : '미확인',
     opened: fetched.has(normUrl(it.url)),
   }));
-  job.search.shortage = job.candidates.length < (job.mode === 'au' ? 3 : 7);
+  job.search.shortage = job.candidates.length < (isAuto(job.mode) ? 3 : 7);
   job.selected = [];
   job.stage = 'select';
   const unopened = job.candidates.filter((c) => !c.opened).length;
@@ -309,7 +343,7 @@ const research: Task = async (job) => {
   job.stage = 'research';
   const picked = job.candidates.filter((c) => job.selected.includes(c.id));
   log(job, `선택한 ${picked.length}건의 원문과 근거를 확인합니다.`);
-  const prompt = job.mode === 'journal' ? journalResearchPrompt(job, picked) : `당신은 카드뉴스 편집자이자 팩트체커입니다. 아래 선택된 소식들의 원문을 WebFetch로 직접 읽고 근거를 확인하세요. 필요하면 WebSearch로 교차 확인하세요.${job.mode === 'au' ? AU_NOTE : ''}
+  const prompt = job.mode === 'journal' ? journalResearchPrompt(job, picked) : `당신은 카드뉴스 편집자이자 팩트체커입니다. 아래 선택된 소식들의 원문을 WebFetch로 직접 읽고 근거를 확인하세요. 필요하면 WebSearch로 교차 확인하세요.${job.mode === 'au' ? AU_NOTE : job.mode === 'fw' ? FW_NOTE : ''}
 
 주제: ${job.topic}
 기준일: ${job.search?.to} (조사 기간 ${job.search?.from} ~ ${job.search?.to})
@@ -438,8 +472,8 @@ ${JSON.stringify(job.research)}
 const storyboard: Task = async (job, feedback?: string) => {
   if (!job.hookDesign) await designHook(job);
   const prev = job.storyboard;
-  const minC = job.mode === 'journal' ? 3 : job.mode === 'au' ? 4 : 5;
-  const defC = job.mode === 'journal' ? 4 : job.mode === 'au' ? job.selected.length + 2 : 5;
+  const minC = job.mode === 'journal' ? 3 : isAuto(job.mode) ? 4 : 5;
+  const defC = job.mode === 'journal' ? 4 : isAuto(job.mode) ? job.selected.length + 2 : 5;
   const count = Math.min(8, Math.max(minC, Number(job.answers.cardCount) || defC));
   const prompt = `당신은 한국어 카드뉴스 스토리보드 작가입니다. 아래 확인된 사실만 사용해 ${prev ? '스토리보드를 수정' : '스토리보드를 작성'}하세요. 웹 검색은 쓰지 마세요.
 
@@ -458,7 +492,7 @@ ${JSON.stringify(job.research)}
 ${prev ? `\n현재 스토리보드:\n${JSON.stringify(prev.cards)}\n사용자 수정 요청: ${feedback}\n요청과 무관한 카드는 그대로 두세요.\n` : ''}
 규칙:
 - 첫 카드는 표지(role "표지"), 마지막은 정리/출처 카드. 각 카드는 role(역할), title(24자 이내), body(핵심 문장 한두 문장, 90자 이내), source({title,url}, 위 사실의 url 중에서만; 근거가 없으면 null), visual(그림 계획, 한국어 한 문장), imagePrompt(이미지 생성용 영어 프롬프트, 글자·로고·워터마크 금지, 텍스트 영역을 위해 하단은 비교적 단순하게).
-${job.mode === 'au' ? AU_STORYBOARD : ''}${job.mode === 'journal' ? '- 이것은 블로그 학습일지의 요약 카드입니다. 내 학습 메모와 확인된 사실만 사용하고, 마지막 카드는 "오늘의 한 줄 정리"로 마무리하세요. 메모와 원문이 달랐던 점은 "바로잡은 점" 카드에 담을 수 있습니다.\n내 학습 메모:\n' + job.notes + '\n' : ''}- 표지(hook)에는 확인된 사실만 쓰고, 확인하지 못한 기능·효과를 넣지 마세요. '최신'이라는 표현은 기준일과 원문 게시일이 뒷받침할 때만 쓰세요.
+${job.mode === 'au' ? AU_STORYBOARD : job.mode === 'fw' ? FW_STORYBOARD : ''}${job.mode === 'journal' ? '- 이것은 블로그 학습일지의 요약 카드입니다. 내 학습 메모와 확인된 사실만 사용하고, 마지막 카드는 "오늘의 한 줄 정리"로 마무리하세요. 메모와 원문이 달랐던 점은 "바로잡은 점" 카드에 담을 수 있습니다.\n내 학습 메모:\n' + job.notes + '\n' : ''}- 표지(hook)에는 확인된 사실만 쓰고, 확인하지 못한 기능·효과를 넣지 마세요. '최신'이라는 표현은 기준일과 원문 게시일이 뒷받침할 때만 쓰세요.
 - title은 role(카드 위 칩에 따로 표시됨)과 같은 말로 시작하지 마세요. 예: role이 "바로잡은 점"이면 title은 "쉼표는 에러"처럼 내용만 쓰세요.
 - 확인된 사실(kind verified)만 사실로 쓰세요. 발표 주체의 주장(kind claim)은 "○○에 따르면"·"○○는 …라고 밝혔다"처럼 주체를 밝혀 쓰고, 확인하지 못한 내용(kind unverified)은 쓰지 마세요. 공개 예정·단계적 제공 기능이면 제목이나 본문에 "예정"을 남기고, 사용 조건(대상·지역·요금제)은 한 카드에 모아 담으세요.
 - 사실에 없는 수치·주장은 쓰지 마세요. 카드에 들어가는 글은 읽기 쉬운 한국어로.

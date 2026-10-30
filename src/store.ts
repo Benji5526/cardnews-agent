@@ -146,7 +146,7 @@ export interface Job {
   qVersion: number;
   /** 내보낸 PNG별로 브라우저가 알려 준 글자 넘침 여부 */
   exportMeta: Record<string, { overflow: boolean; at: string }>;
-  mode: 'news' | 'journal' | 'au';
+  mode: 'news' | 'journal' | 'au' | 'fw';
   notes: string;
   links: string[];
   post: { title: string; markdown: string; at: string } | null;
@@ -160,6 +160,8 @@ export interface Job {
   answers: Record<string, string>;
   storyboard: { version: number; styleGuide: string; cards: Card[] } | null;
   finalApproved: boolean;
+  /** Discord에 발행한 기록(웹훅 주소는 저장하지 않는다). */
+  published?: { at: string; messageId: string } | null;
   log: { t: string; msg: string }[];
 }
 
@@ -170,7 +172,7 @@ const cache = new Map<string, Job>();
 
 export const jobDir = (id: string) => path.join(ROOT, id);
 
-export function newJob(topic: string, brief = '', opts: { mode?: 'news' | 'journal' | 'au'; notes?: string; links?: string[] } = {}): Job {
+export function newJob(topic: string, brief = '', opts: { mode?: 'news' | 'journal' | 'au' | 'fw'; notes?: string; links?: string[] } = {}): Job {
   const id = new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + crypto.randomBytes(3).toString('hex');
   const now = new Date().toISOString();
   const job: Job = {
@@ -291,3 +293,6 @@ export function recoverInterrupted() {
     }
   }
 }
+
+/** 사람의 선택·질문 없이 서버가 끝까지 자동 제작하는 모드(호주 데일리 뉴스, 음식·웰니스 뉴스). */
+export const isAuto = (mode: string) => mode === 'au' || mode === 'fw';

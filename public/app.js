@@ -106,17 +106,19 @@ function errorPanel() {
 }
 
 // ---------- 단계별 화면 ----------
-const DEFAULT_TOPIC = { news: 'AI 최신소식', journal: '오늘 공부한 것: ', au: '오늘의 호주 뉴스' };
+const DEFAULT_TOPIC = { news: 'AI 최신소식', journal: '오늘 공부한 것: ', au: '오늘의 호주 뉴스', fw: '한국·동남아 음식·웰니스 뉴스' };
 
 function viewTopic() {
   return `<div class="panel"><h2>1. 주제 입력</h2>
     <div class="q"><b>무엇을 만들까요?</b>
       <label class="opt"><input type="radio" name="mode" value="news" checked><span>최신 소식 카드뉴스 <span class="muted">— 최근 7일 자료를 조사해 카드뉴스를 만듭니다.</span></span></label>
       <label class="opt"><input type="radio" name="mode" value="journal"><span>학습일지 → 블로그 포스트 + 요약 카드 <span class="muted">— 오늘 공부한 메모에서 개념을 골라 글과 카드를 만듭니다.</span></span></label>
-      <label class="opt"><input type="radio" name="mode" value="au"><span>호주 데일리 뉴스 (한국어 번역·요약) <span class="muted">— 오늘 호주의 큰 뉴스를 자동으로 찾아 카드로 만들어 두고, 마지막에 내가 승인합니다.</span></span></label></div>
+      <label class="opt"><input type="radio" name="mode" value="au"><span>호주 데일리 뉴스 (한국어 번역·요약) <span class="muted">— 오늘 호주의 큰 뉴스를 자동으로 찾아 카드로 만들어 두고, 마지막에 내가 승인합니다.</span></span></label>
+      <label class="opt"><input type="radio" name="mode" value="fw"><span>한국·동남아 음식·웰니스 뉴스 (한국어 요약) <span class="muted">— 최근 7일의 음식·식당·웰니스 소식을 자동으로 찾아 카드로 만들어 두고, 마지막에 내가 승인합니다.</span></span></label></div>
     <input type="text" id="topic" value="${DEFAULT_TOPIC.news}" placeholder="주제">
     <div data-mode-block="news"><p class="muted">주제를 입력하면 실행 시점 기준 최근 7일의 자료를 조사합니다.</p></div>
     <div data-mode-block="au" hidden><p class="muted">시드니 기준 최근 24시간의 호주 큰 뉴스 3~4건을 찾아 한국어로 요약 번역해 한 편(5~6장)으로 만듭니다. 선택·질문 없이 자동으로 진행되고, 끝나면 검수 화면에서 확인·승인합니다. 기사 사진은 쓰지 않고 단색 배경을 씁니다.</p></div>
+    <div data-mode-block="fw" hidden><p class="muted">한국 시간 기준 최근 7일의 음식·식당 소식과 웰니스 소식(한국·동남아) 3~4건을 찾아 한국어로 요약해 한 편(5~6장)으로 만듭니다. 선택·질문 없이 자동으로 진행되고, 끝나면 검수 화면에서 확인·승인합니다. 가격·효능 표현은 출처를 밝히며, 기사 사진은 쓰지 않고 단색 배경을 씁니다.</p></div>
     <div data-mode-block="journal" hidden>
       <div class="q" style="margin-top:12px"><b>학습 메모</b><div class="why">오늘 배운 내용을 자유롭게 적어 주세요 (20자 이상). 원문과 대조해 오해한 부분을 짚어 드립니다.</div>
       <textarea id="notes" style="min-height:140px" placeholder="예: RAG는 검색으로 가져온 문서를 프롬프트에 넣어 답하게 하는 방식. 임베딩은 문장을 벡터로 바꾸는 것..."></textarea></div>
@@ -256,7 +258,7 @@ function viewCards() {
       <details><summary>CC0·퍼블릭 도메인 사진으로 바꾸기</summary><div class="row"><input type="text" data-stockq="${c.n}" placeholder="영어 검색어 (예: server rack)" value="${esc(defaultStockQuery(c))}"><button class="ghost" data-act="stockSearch" data-n="${c.n}">검색</button></div><div id="stock-${c.n}" class="stock"></div></details>` : ''}</div>`).join('')}</div>
     ${postPanel()}
     ${review ? `<div class="row"><button data-act="approveFinal" ${job.busy || job.error ? 'disabled' : ''}>최종 승인</button></div>` : ''}
-    ${job.stage === 'done' ? '<div class="row"><button data-act="download">PNG·ZIP 내려받기</button><button class="ghost" data-act="reopen">승인 해제하고 수정하기</button><span id="dlState" class="muted"></span></div><div id="exportCheck"></div>' : ''}</div>`;
+    ${job.stage === 'done' ? `<div class="row"><button data-act="download">PNG·ZIP 내려받기</button><button data-act="publish">Discord에 올리기</button><button class="ghost" data-act="reopen">승인 해제하고 수정하기</button><span id="dlState" class="muted">${job.published ? 'Discord에 발행함 · ' + esc(new Date(job.published.at).toLocaleString('ko-KR')) : ''}</span></div><div id="exportCheck"></div>` : ''}</div>`;
 }
 
 async function paintCards() {
@@ -265,7 +267,7 @@ async function paintCards() {
     const canvas = document.querySelector(`canvas[data-n="${c.n}"]`);
     if (!canvas) continue;
     const img = await loadImage(c.image?.file ? `/api/jobs/${job.id}/images/${c.image.file}` : null);
-    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal', au: job.mode === 'au' });
+    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal', au: job.mode === 'au' || job.mode === 'fw', fw: job.mode === 'fw' });
     const badge = document.querySelector(`[data-ovf="${c.n}"]`);
     if (badge) { badge.className = 'badge ' + (overflow ? 'bad' : 'ok'); badge.textContent = overflow ? '글자 넘침' : '글자 OK'; }
   }
@@ -326,20 +328,32 @@ async function showExportCheck() {
   if (box) box.innerHTML = `<h3>내보낸 파일 점검 — 통과 ${r.summary['통과']} · 미확인 ${r.summary['미확인']} · 실패 ${r.summary['실패']}</h3><ul class="chk">${rows}</ul><h3>내가 직접 확인할 부분</h3><ul class="chk">${human}</ul>`;
 }
 
-async function downloadAll() {
+async function renderAll() {
   const state = $('#dlState');
   const total = job.storyboard.cards.length;
   for (const c of job.storyboard.cards) {
     state.textContent = `PNG 만드는 중 ${c.n}/${total}…`;
     const canvas = document.createElement('canvas');
     const img = await loadImage(c.image?.file ? `/api/jobs/${job.id}/images/${c.image.file}` : null);
-    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal', au: job.mode === 'au' });
+    const { overflow } = renderCard(canvas, c, total, img, { asOf: job.search?.to, journal: job.mode === 'journal', au: job.mode === 'au' || job.mode === 'fw', fw: job.mode === 'fw' });
     await api(`/jobs/${job.id}/png`, 'POST', { n: c.n, dataUrl: canvas.toDataURL('image/png'), overflow });
   }
   state.textContent = '내보낸 파일을 점검하는 중…';
   await showExportCheck();
-  state.textContent = 'ZIP 다운로드를 시작합니다.';
+}
+
+async function downloadAll() {
+  await renderAll();
+  $('#dlState').textContent = 'ZIP 다운로드를 시작합니다.';
   location.href = `/api/jobs/${job.id}/download.zip`;
+}
+
+async function publishDiscord() {
+  const again = !!job.published;
+  if (!confirm(again ? '이미 Discord에 올린 작업입니다. 같은 카드를 한 번 더 올릴까요?' : '검수·승인한 카드를 Discord 채널에 올립니다. 올린 뒤에는 Discord에서 직접 삭제해야 합니다. 올릴까요?')) return;
+  await renderAll();
+  $('#dlState').textContent = 'Discord에 올리는 중…';
+  setJob(await api(`/jobs/${job.id}/publish`, 'POST', again ? { again: true } : {}));
 }
 
 function collectAnswers() {
@@ -407,6 +421,7 @@ document.addEventListener('click', (e) => {
     else if (a === 'rewritePost') setJob(await api(`/jobs/${job.id}/post/rewrite`, 'POST'));
     else if (a === 'retry') setJob(await api(`/jobs/${job.id}/retry`, 'POST'));
     else if (a === 'download') await downloadAll();
+    else if (a === 'publish') await publishDiscord();
   });
 });
 

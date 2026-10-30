@@ -14,6 +14,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 하트비트: 실행할 때마다 data/daily-log.jsonl에 한 줄을 남긴다. 파일이 오늘 날짜로 갱신되지 않았다면 그날은 멈춘 것이다.
 //   --wait 를 주면 제작이 끝날 때까지 기다렸다가 최종 상태(검수 대기·실패)도 기록한다.
 const WAIT = process.argv.includes('--wait');
+// --mode fw: 한국·동남아 음식·웰니스 뉴스 (기본은 호주 데일리 뉴스)
+const MODE = process.argv.includes('--mode') && process.argv[process.argv.indexOf('--mode') + 1] === 'fw' ? 'fw' : 'au';
+const TOPIC = MODE === 'fw' ? '한국·동남아 음식·웰니스 뉴스' : '오늘의 호주 뉴스';
 const LOG = path.join(ROOT, 'data', 'daily-log.jsonl');
 const beat = (status, detail = '', extra = {}) => {
   try {
@@ -56,14 +59,14 @@ if (!(await healthy())) {
 const res = await fetch(`${BASE}/api/jobs`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ mode: 'au', topic: '오늘의 호주 뉴스' }),
+  body: JSON.stringify({ mode: MODE, topic: TOPIC }),
 });
 const body = await res.json().catch(() => ({}));
 if (!res.ok) {
   fail(`작업을 만들지 못했습니다 (HTTP ${res.status}): ${body.error ?? ''}`);
 }
 console.log(`자동 제작을 시작했습니다. 약 10분 뒤 검수 화면에서 확인·승인하세요:\n${BASE}/#${body.id}`);
-beat('started', '자동 제작 시작', { jobId: body.id });
+beat('started', '자동 제작 시작', { jobId: body.id, mode: MODE });
 
 if (WAIT) {
   // 최대 40분. 끝나면 검수 대기(waiting_for_user)인지 실패(failed)인지 기록한다.
